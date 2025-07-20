@@ -1,9 +1,10 @@
-import {PrismaClient} from '@prisma/client';
 import express from 'express';
-const app = express();
-const prisma = new PrismaClient();
+import { signup, login } from '../controller/authController';
 
-app.get("/get_users", async (req,res)=>{
-    const data = await prisma.user.findMany()
-    res.json({message: "All data fetched succesfully", data})
-})
+const router = express.Router();
+
+// Auth routes
+router.post('/signup', signup);
+router.post('/login', login);
+
+export default router;

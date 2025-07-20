@@ -8,7 +8,7 @@
     "start": "node dist/index.js"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node src/seed/seed.ts"
   },
   "keywords": [],
   "author": "",
@@ -24,13 +24,21 @@
     "firebase-admin": "^13.4.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.1",
+    "multer": "^2.0.2",
     "node-schedule": "^2.1.1",
     "nodemailer": "^7.0.5",
-    "prisma": "^6.12.0"
+    "prisma": "^6.12.0",
+    "slugify": "^1.6.6"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
+    "@types/mime-types": "^3.0.1",
+    "@types/morgan": "^1.9.10",
+    "@types/multer": "^2.0.0",
     "@types/node": "^24.0.15",
+    "@types/nodemailer": "^6.4.17",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
