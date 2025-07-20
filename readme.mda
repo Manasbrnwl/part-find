@@ -1,0 +1,358 @@
+# Part Find - Part-Time Job Finder Application
+
+Part Find is a TypeScript-based backend application designed to connect users with part-time job opportunities. The platform allows users to find part-time jobs and create job offers, making it easier to connect job seekers with employers.
+
+## Features
+- User authentication (signup, login)
+- User profile management
+- Role-based authorization
+- OTP verification system
+- Email notifications
+- Push notifications via Firebase
+- Secure password handling
+- JWT-based authentication
+## Tech Stack
+- Language : TypeScript
+- Runtime : Node.js
+- Framework : Express.js
+- Database : PostgreSQL
+- ORM : Prisma
+- Authentication : JWT, bcrypt
+- Notifications : Nodemailer, Firebase Cloud Messaging
+- Development : Nodemon
+
+## Project Structure
+├── prisma/                  # Database schema and migrations
+├── src/
+│   ├── controller/          # Request handlers
+│   ├── middleware/          # Express middleware
+│   ├── routes/              # API routes
+│   ├── seed/                # Database seed data
+│   └── index.ts             # Application entry point
+├── utils/
+│   ├── notification/        # Email and push notification utilities
+│   ├── otp/                 # OTP generation and verification
+│   ├── default.ts           # Utility functions
+│   └── firebase.ts          # Firebase configuration
+├── uploads/                 # User uploaded files
+├── .env                     # Environment variables
+├── package.json             # Project dependencies
+└── tsconfig.json           # TypeScript configuration
+
+## Getting Started
+### Prerequisites
+- Node.js (v14 or higher)
+- PostgreSQL database
+- npm or yarn
+
+### Installation
+1. Clone the repository
+- git clone https://github.com/Manasbrnwl/part-find.git
+- cd part_find_ts
+2. Install dependencies
+- npm install
+
+### Environment Variables
+Create a .env file in the root directory with the following variables:
+```
+DATABASE_URL="postgresql://username:password@localhost:5432/part_find_db"
+PORT=3000
+JWT_SECRET=your_secure_random_string_here
+NODE_ENV=development
+
+# Email configuration
+EMAIL_USER=your_email@gmail.com
+EMAIL_PASS=your_email_password
+
+# Firebase configuration (for push notifications)
+FIREBASE_PROJECT_ID=your_project_id
+FIREBASE_CLIENT_EMAIL=your_client_email
+FIREBASE_PRIVATE_KEY=your_private_key
+```
+
+### Database Setup
+1. Create a PostgreSQL database
+2. Run Prisma migrations to set up your database schema
+```
+npx prisma migrate dev
+```
+3. Seed the database with initial data
+```
+npx prisma db seed
+```
+### Running the Application Development Mode
+```
+npm run dev
+``` Production Mode
+```
+npm run build
+npm start
+```
+
+## API Documentation
+### Authentication Register a new user
+- URL : /auth/signup
+- Method : POST
+- Request Body :
+  ```
+  {
+    "email": "user@example.com",
+    "name": "John Doe",
+    "password": "securepassword",
+    "phone_number": "1234567890"
+  }
+  ```
+- Response :
+  ```
+  {
+    "message": "User registered 
+    successfully",
+    "user": {
+      "id": "uuid",
+      "email": "user@example.com",
+      "name": "John Doe",
+      "phone_number": "1234567890",
+      "role": 2
+    },
+    "token": "jwt_token"
+  }
+  ``` Login
+- URL : /auth/login
+- Method : POST
+- Request Body :
+  ```
+  {
+    "email": "user@example.com",
+    "password": "securepassword"
+  }
+  ```
+- Response :
+  ```
+  {
+    "message": "Login successful",
+    "user": {
+      "id": "uuid",
+      "email": "user@example.com",
+      "name": "John Doe",
+      "phone_number": "1234567890",
+      "role": 2
+    },
+    "token": "jwt_token"
+  }
+  ```
+### User Management Get User Profile
+- URL : /users/profile
+- Method : GET
+- Headers : Authorization: Bearer jwt_token
+- Response :
+  ```
+  {
+    "message": "Profile fetched 
+    successfully",
+    "user": {
+      "id": "uuid",
+      "email": "user@example.com",
+      "name": "John Doe",
+      "phone_number": "1234567890",
+      "role": 2,
+      "profile_image": "http://
+      localhost:3000/images/
+      profile-image.jpg"
+    }
+  }
+  ``` Update User Profile
+- URL : /users/profile
+- Method : PUT
+- Headers : Authorization: Bearer jwt_token
+- Content-Type : multipart/form-data
+- Request Body :
+  ```
+  name: John Smith
+  phone_number: 9876543210
+  address: 123 Main St
+  city: New York
+  state: NY
+  country: USA
+  zip_code: 10001
+  profile_image: [file]
+  ```
+- Response :
+  ```
+  {
+    "message": "Profile updated 
+    successfully",
+    "user": {
+      "id": "uuid",
+      "email": "user@example.com",
+      "name": "John Smith",
+      "phone_number": "9876543210",
+      "address": "123 Main St",
+      "city": "New York",
+      "state": "NY",
+      "country": "USA",
+      "zip_code": "10001",
+      "profile_image": 
+      "profile-image-filename.jpg"
+    }
+  }
+  ``` Get All Users (Admin Only)
+- URL : /users
+- Method : GET
+- Headers : Authorization: Bearer jwt_token (Admin token required)
+- Response :
+  ```
+  {
+    "message": "Users fetched 
+    successfully",
+    "data": [
+      {
+        "id": "uuid",
+        "email": "user1@example.com",
+        "name": "User One",
+        "role": 2,
+        "phone_number": "1234567890",
+        "address": "123 Main St",
+        "createdAt": 
+        "2023-01-01T00:00:00.000Z",
+        "updatedAt": 
+        "2023-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "uuid",
+        "email": "user2@example.com",
+        "name": "User Two",
+        "role": 2,
+        "phone_number": "0987654321",
+        "address": "456 Oak St",
+        "createdAt": 
+        "2023-01-02T00:00:00.000Z",
+        "updatedAt": 
+        "2023-01-02T00:00:00.000Z"
+      }
+    ]
+  }
+  ```
+### Job Listings
+Note: The job listing functionality is planned for future implementation. The following API endpoints are proposed specifications.
+ Create Job Posting
+- URL : /jobs
+- Method : POST
+- Headers : Authorization: Bearer jwt_token
+- Request Body :
+  ```
+  {
+    "title": "Part-time Web Developer",
+    "description": "Looking for a 
+    skilled web developer for a 
+    part-time position...",
+    "location": "New York, NY",
+    "salary": 25.00,
+    "hours_per_week": 20,
+    "skills_required": ["JavaScript", 
+    "React", "Node.js"],
+    "start_date": "2023-06-01T00:00:00.
+    000Z",
+    "application_deadline": 
+    "2023-05-15T00:00:00.000Z"
+  }
+  ```
+- Response :
+  ```
+  {
+    "message": "Job posting created 
+    successfully",
+    "job": {
+      "id": "uuid",
+      "title": "Part-time Web 
+      Developer",
+      "description": "Looking for a 
+      skilled web developer for a 
+      part-time position...",
+      "location": "New York, NY",
+      "salary": 25.00,
+      "hours_per_week": 20,
+      "skills_required": ["JavaScript", 
+      "React", "Node.js"],
+      "start_date": 
+      "2023-06-01T00:00:00.000Z",
+      "application_deadline": 
+      "2023-05-15T00:00:00.000Z",
+      "employer_id": "uuid",
+      "createdAt": "2023-04-01T00:00:00.
+      000Z",
+      "updatedAt": "2023-04-01T00:00:00.
+      000Z"
+    }
+  }
+  ``` Get All Job Postings
+- URL : /jobs
+- Method : GET
+- Query Parameters :
+  - location (optional): Filter by location
+  - skills (optional): Filter by required skills
+  - salary_min (optional): Minimum salary
+  - salary_max (optional): Maximum salary
+  - hours_min (optional): Minimum hours per week
+  - hours_max (optional): Maximum hours per week
+  - page (optional): Page number for pagination
+  - limit (optional): Number of results per page
+- Response :
+  ```
+  {
+    "message": "Jobs fetched 
+    successfully",
+    "total": 50,
+    "page": 1,
+    "limit": 10,
+    "data": [
+      {
+        "id": "uuid",
+        "title": "Part-time Web 
+        Developer",
+        "description": "Looking for a 
+        skilled web developer for a 
+        part-time position...",
+        "location": "New York, NY",
+        "salary": 25.00,
+        "hours_per_week": 20,
+        "skills_required": 
+        ["JavaScript", "React", "Node.
+        js"],
+        "employer": {
+          "id": "uuid",
+          "name": "Tech Company Inc."
+        },
+        "application_deadline": 
+        "2023-05-15T00:00:00.000Z"
+      },
+      // More job listings...
+    ]
+  }
+  ``` Apply for a Job
+- URL : /jobs/:jobId/apply
+- Method : POST
+- Headers : Authorization: Bearer jwt_token
+- Request Body :
+  ```
+  {
+    "cover_letter": "I am interested in 
+    this position because...",
+    "resume": 
+    "base64_encoded_file_or_url"
+  }
+  ```
+- Response :
+  ```
+  {
+    "message": "Application submitted 
+    successfully",
+    "application": {
+      "id": "uuid",
+      "job_id": "uuid",
+      "applicant_id": "uuid",
+      "status": "pending",
+      "submitted_at": 
+      "2023-04-10T00:00:00.000Z"
+    }
+  }
+  ```
