@@ -40,7 +40,7 @@ export const authenticate = async (
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
 
     // Find user with this token
-    const user = await prisma.user.findFirst({
+    const user = await prisma.user.findUnique({
       where: {
         id: decoded.userId,
         jwt_token: token
