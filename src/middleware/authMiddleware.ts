@@ -65,7 +65,7 @@ export const authenticate = async (
 };
 
 // Optional: Role-based authorization middleware
-export const authorize = (allowedRoles: number[]) => {
+export const authorize = (allowedRoles: string[]) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.userId;

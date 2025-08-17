@@ -5,6 +5,7 @@ import cors from "cors";
 import morgan from "morgan";
 import authRoutes from "./routes/authRoutes";
 import userRoutes from "./routes/userRoutes";
+import postRoutes from "./routes/postRoutes";
 
 dotenv.config();
 
@@ -26,6 +27,8 @@ app.get("/", (_req, res) => {
 app.use("/auth", authRoutes);
 // User routes
 app.use("/users", userRoutes);
+// Post routes
+app.use("/post", postRoutes);
 
 // Legacy route - consider migrating this to proper controller pattern
 app.use("/seed", require("./routes/user"));

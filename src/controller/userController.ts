@@ -74,6 +74,8 @@ export const updateProfile = async (req: Request, res: Response) => {
       state,
       zip_code,
       gender,
+      blood_group,
+      color,
       country
     } = req.body;
 
@@ -91,6 +93,8 @@ export const updateProfile = async (req: Request, res: Response) => {
         zip_code: zip_code || user.zip_code,
         gender: gender || user.gender,
         country: country || user.country,
+        blood_group: blood_group || user.blood_group,
+        color: color || user.color,
         profile_image: (req as any).file?.filename || user.profile_image
       }
     });

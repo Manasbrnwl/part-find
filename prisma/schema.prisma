@@ -8,13 +8,13 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
+  id            String        @id @default(uuid())
+  email         String        @unique
   name          String?
   date_of_birth DateTime?
-  phone_number  String?   @unique
+  phone_number  String?       @unique
   password      String
-  role          Int       @default(2)
+  role          String        @default("user")
   fcm_token     String?
   jwt_token     String?
   otp           String?
@@ -22,19 +22,41 @@ model User {
   hieght        Int?
   weight        Int?
   gender        Int?
+  blood_group   String?
+  color         String?
   address       String?
   city          String?
   state         String?
   country       String?
   profile_image String?
   zip_code      String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  posts         Post[]
+  comments      postApplied[]
 }
 
-model Role {
-  id        Int      @id @default(autoincrement())
-  role_name String
+model Post {
+  id          String        @id @default(uuid())
+  user        User          @relation(fields: [userId], references: [id])
+  userId      String
+  title       String        @db.VarChar(255)
+  content     String        @db.Text
+  requirement String        @db.Text
+  total       Int           @default(1)
+  endDate     DateTime      @db.Date
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  comments    postApplied[]
+}
+
+model postApplied {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  post      Post     @relation(fields: [postId], references: [id])
+  postId    String
+  content   String   @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

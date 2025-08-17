@@ -35,6 +35,6 @@ router
   .put("/profile", file_storage.single("profile_image"), updateProfile);
 
 // Get all users (admin only)
-router.get("/", authorize([1]), getAllUsers);
+router.get("/", authorize(["admin"]), getAllUsers);
 
 export default router;
