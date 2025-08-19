@@ -16,7 +16,10 @@ export const createPosts = async (req: Request, res: Response) => {
         content: content || "No content",
         requirement: requirement || "No requirement",
         total: Number(total),
-        endDate: new Date(endDate)
+        endDate: new Date(endDate),
+        city: city || "No city",
+        state: state || "No state",
+        pincode: pincode || "No pincode"
       }
     });
     res.status(201).json(post);

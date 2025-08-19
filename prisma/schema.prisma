@@ -43,9 +43,9 @@ model Post {
   title       String        @db.VarChar(255)
   content     String        @db.Text
   requirement String        @db.Text
-  city        String
-  state       String
-  pincode     String
+  city        String        @db.VarChar(255) @default("No city")
+  state       String        @db.VarChar(255) @default("No state")
+  pincode     String        @db.VarChar(255) @default("No pincode")
   total       Int           @default(1)
   endDate     DateTime      
   createdAt   DateTime      @default(now())
