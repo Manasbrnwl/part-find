@@ -27,7 +27,7 @@ export const getProfile = async (req: Request, res: Response) => {
     }
 
     // Return user data without password, createdAt, and updatedAt
-    const { password, createdAt, updatedAt, ...userWithoutPassword } = user;
+    const { password, createdAt, updatedAt, jwt_token, otp, otp_exp, fcm_token, ...userWithoutPassword } = user;
 
     return res.status(200).json({
       message: "Profile fetched successfully",

@@ -6,7 +6,7 @@ const router = express.Router();
 const prisma = new PrismaClient();
 
 export const createPosts = async (req: Request, res: Response) => {
-  const { title, content, requirement, total, endDate } = req.body;
+  const { title, content, requirement, total, endDate, city, state, pincode } = req.body;
   const userId = req.userId;
   try {
     const post = await prisma.post.create({
@@ -29,11 +29,6 @@ export const updatePost = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { title, content, requirement, total, endDate } = req.body;
   try {
-    if (title || content || requirement || total || endDate) {
-      res.status(400).json({ message: "Bad request" });
-      return;
-    }
-
     const post = await prisma.post.findUnique({
       where: {
         id
@@ -53,7 +48,7 @@ export const updatePost = async (req: Request, res: Response) => {
         content: content || post.content,
         requirement: requirement || post.requirement,
         total: Number(total) || post.total,
-        endDate: new Date(endDate) || post.endDate
+        endDate: endDate ? endDate : post.endDate
       }
     });
     res.status(201).json(updatePost);

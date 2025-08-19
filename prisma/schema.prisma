@@ -43,8 +43,11 @@ model Post {
   title       String        @db.VarChar(255)
   content     String        @db.Text
   requirement String        @db.Text
+  city        String
+  state       String
+  pincode     String
   total       Int           @default(1)
-  endDate     DateTime      @db.Date
+  endDate     DateTime      
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   comments    postApplied[]
