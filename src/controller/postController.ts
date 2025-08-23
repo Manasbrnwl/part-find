@@ -6,7 +6,8 @@ const router = express.Router();
 const prisma = new PrismaClient();
 
 export const createPosts = async (req: Request, res: Response) => {
-  const { title, content, requirement, total, endDate, city, state, pincode } = req.body;
+  const { title, content, requirement, total, endDate, city, state, pincode } =
+    req.body;
   const userId = req.userId;
   try {
     const post = await prisma.post.create({
@@ -85,9 +86,16 @@ export const deletePost = async (req: Request, res: Response) => {
 
 export const getAllPosts = async (req: Request, res: Response) => {
   try {
+    const city = req.query.city as string;
+    const state = req.query.state as string;
+
     const posts = await prisma.post.findMany({
       where: {
-        userId: req.userId
+        userId: req.userId,
+        endDate: {
+          gt: new Date()
+        },
+        OR: [{ state }, { city }]
       }
     });
     res.status(200).json(posts);

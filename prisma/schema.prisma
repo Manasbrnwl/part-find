@@ -37,20 +37,23 @@ model User {
 }
 
 model Post {
-  id          String        @id @default(uuid())
-  user        User          @relation(fields: [userId], references: [id])
-  userId      String
-  title       String        @db.VarChar(255)
-  content     String        @db.Text
-  requirement String        @db.Text
-  city        String        @db.VarChar(255) @default("No city")
-  state       String        @db.VarChar(255) @default("No state")
-  pincode     String        @db.VarChar(255) @default("No pincode")
-  total       Int           @default(1)
-  endDate     DateTime      
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  comments    postApplied[]
+  id             String        @id @default(uuid())
+  user           User          @relation(fields: [userId], references: [id])
+  userId         String
+  role           String        
+  title          String        @db.VarChar(255)
+  content        String        @db.Text
+  requirement    String        @db.Text
+  responsibility String        @db.Text
+  skills         String        @db.Text
+  city           String        @default("No city") @db.VarChar(255)
+  state          String        @default("No state") @db.VarChar(255)
+  pincode        String        @default("No pincode") @db.VarChar(255)
+  total          Int           @default(1)
+  endDate        DateTime
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  comments       postApplied[]
 }
 
 model postApplied {
