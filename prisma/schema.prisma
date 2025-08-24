@@ -61,6 +61,7 @@ model Post {
   updatedAt      DateTime      @updatedAt
   comments       postApplied[]
   is_active      Boolean       @default(true)
+  company_name   String?
 }
 
 model postApplied {
@@ -69,6 +70,7 @@ model postApplied {
   userId    String
   post      Post     @relation(fields: [postId], references: [id])
   postId    String
+  status    String   @default("pending")
   content   String   @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

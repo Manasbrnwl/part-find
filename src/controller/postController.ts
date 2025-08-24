@@ -27,8 +27,12 @@ export const createPosts = async (req: Request, res: Response) => {
       }
     });
     res.status(201).json(post);
-  } catch (error) {
-    res.status(500).json({ message: "Internal server error" });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
 };
 
@@ -70,8 +74,12 @@ export const updatePost = async (req: Request, res: Response) => {
       }
     });
     res.status(201).json(updatePost);
-  } catch (error) {
-    res.status(500).json({ message: "Internal server error" });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
 };
 
@@ -97,8 +105,12 @@ export const deletePost = async (req: Request, res: Response) => {
       }
     });
     res.status(200).json({ message: "Post deleted" });
-  } catch (error) {
-    res.status(500).json({ message: "Internal server error" });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
 };
 
@@ -116,8 +128,12 @@ export const getAllPosts = async (req: Request, res: Response) => {
       }
     });
     res.status(200).json(posts);
-  } catch (error) {
-    res.status(500).json({ message: "Internal server error" });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
 };
 
@@ -135,7 +151,84 @@ export const getPostById = async (req: Request, res: Response) => {
       return;
     }
     res.status(200).json(post);
-  } catch (error) {
-    res.status(500).json({ message: "Internal server error" });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+};
+
+export const applyToPost = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const userId = req.userId;
+  try {
+    const post = await prisma.post.findUnique({
+      where: {
+        id
+      }
+    });
+    if (!post) {
+      res.status(404).json({ message: "Post not found" });
+      return;
+    }
+    if (typeof userId === 'string') {
+      await prisma.postApplied.create({
+        data: {
+          userId,
+          postId: id,
+          content: req.body.content,
+        },
+      });
+    }
+    res.status(200).json({ message: "Applied to post" });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+};
+
+export const getAppliedPosts = async (req: Request, res: Response) => {
+  try {
+    const posts = await prisma.postApplied.findMany({
+      select: {
+        post: {
+          select: {
+            id: true,
+            title: true,
+            content: true,
+            total: true,
+            location: true,
+            role: true,
+            endDate: true
+          }
+        },
+        status: true,
+        content: true,
+      },
+      where: {
+        userId: req.userId
+      },
+      orderBy: {
+        post: {
+          endDate: 'desc'
+        }
+      }
+    });
+    res.status(200).json(posts.map((post) => ({
+      ...post.post,
+      status: post.post.endDate > new Date() ? post.status : "closed",
+      content: post.content,
+    })));
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
 };

@@ -4,7 +4,9 @@ import {
   updatePost,
   deletePost,
   getAllPosts,
-  getPostById
+  getPostById,
+  getAppliedPosts,
+  applyToPost
 } from "../controller/postController";
 import { authenticate, authorize } from "../middleware/authMiddleware";
 
@@ -18,5 +20,8 @@ router.put("/update/:id", updatePost);
 router.delete("/delete/:id", deletePost);
 router.get("/get-all", getAllPosts);
 router.get("/:id", getPostById);
+router.get("/applied/get-all", getAppliedPosts);
+router.post("/apply/:id", applyToPost);
+
 
 export default router;
