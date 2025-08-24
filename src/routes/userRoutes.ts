@@ -32,7 +32,8 @@ router.use(authenticate); // Apply authentication middleware to all routes in th
 
 router
   .get("/profile", getProfile)
-  .put("/profile", file_storage.single("profile_image"), updateProfile);
+  .put("/profile", file_storage.fields([{ name: "profile_image", maxCount: 5 }]), updateProfile);
+
 
 // Get all users (admin only)
 router.get("/", authorize(["admin"]), getAllUsers);

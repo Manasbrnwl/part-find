@@ -13,47 +13,55 @@ model User {
   name          String?
   date_of_birth DateTime?
   phone_number  String?       @unique
-  password      String
+  password      String?
   role          String        @default("user")
   fcm_token     String?
   jwt_token     String?
   otp           String?
   otp_exp       DateTime?
-  hieght        Int?
-  weight        Int?
-  gender        Int?
-  blood_group   String?
-  color         String?
+  height        Float?
+  weight        Float?
+  gender        String?
+  english_level String?
   address       String?
-  city          String?
   state         String?
   country       String?
-  profile_image String?
-  zip_code      String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   posts         Post[]
   comments      postApplied[]
+  userImages    images[]
+  is_active     Boolean       @default(true)
+}
+
+model images {
+  id        String   @id @default(uuid())
+  userId    String
+  image     String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Post {
   id             String        @id @default(uuid())
   user           User          @relation(fields: [userId], references: [id])
   userId         String
-  role           String        
+  role           String?
   title          String        @db.VarChar(255)
-  content        String        @db.Text
-  requirement    String        @db.Text
-  responsibility String        @db.Text
-  skills         String        @db.Text
-  city           String        @default("No city") @db.VarChar(255)
-  state          String        @default("No state") @db.VarChar(255)
-  pincode        String        @default("No pincode") @db.VarChar(255)
+  content        String?       @db.Text
+  requirement    String?       @db.Text
+  responsibility String?       @db.Text
+  location       String?       @db.Text
+  payment        Float?
+  paymentDate    DateTime?
   total          Int           @default(1)
+  startDate      DateTime      @default(now())
   endDate        DateTime
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   comments       postApplied[]
+  is_active      Boolean       @default(true)
 }
 
 model postApplied {

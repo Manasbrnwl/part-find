@@ -19,7 +19,15 @@ export const getProfile = async (req: Request, res: Response) => {
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: userId }
+      where: { id: userId },
+      include: {
+        userImages: {
+          select: {
+            id: true,
+            image: true
+          }
+        }
+      }
     });
 
     if (!user) {
@@ -33,10 +41,8 @@ export const getProfile = async (req: Request, res: Response) => {
       message: "Profile fetched successfully",
       user: {
         ...userWithoutPassword,
-        profile_image: `${req.protocol}://${req.get("host")}/images/${
-          userWithoutPassword.profile_image
-        }`
-      }
+      },
+      baseUrl: `${req.protocol}://${req.hostname}/images/`
     });
   } catch (error: any) {
     res.status(500).json({
@@ -70,13 +76,11 @@ export const updateProfile = async (req: Request, res: Response) => {
       address,
       height,
       weight,
-      city,
       state,
-      zip_code,
       gender,
-      blood_group,
-      color,
-      country
+      english_level,
+      country,
+      imageId
     } = req.body;
 
     // Update user data
@@ -86,21 +90,38 @@ export const updateProfile = async (req: Request, res: Response) => {
         name,
         phone_number,
         address: address || user.address,
-        hieght: height || user.hieght,
-        weight: weight || user.weight,
-        city: city || user.city,
+        height: parseFloat(height) || user.height,
+        weight: parseFloat(weight) || user.weight,
         state: state || user.state,
-        zip_code: zip_code || user.zip_code,
         gender: gender || user.gender,
         country: country || user.country,
-        blood_group: blood_group || user.blood_group,
-        color: color || user.color,
-        profile_image: (req as any).file?.filename || user.profile_image
+        english_level: english_level || user.english_level,
       }
     });
 
+    if (imageId) {
+      const deleteImages = await prisma.images.deleteMany({
+        where: {
+          id: {
+            in: imageId.split(',')
+          }
+        }
+      })
+    }
+    const files = req.files as { profile_image?: Express.Multer.File[] };
+    const profile_image = files.profile_image
+    if (profile_image) {
+      const addImage = await prisma.images.createMany({
+        data: profile_image?.map((file: any) => ({
+          userId,
+          image: file.filename
+        })),
+        skipDuplicates: true
+      })
+    }
+
     // Return updated user data without password, createdAt, and updatedAt
-    const { password, createdAt, updatedAt, ...userWithoutPassword } =
+    const { password, createdAt, updatedAt, fcm_token, jwt_token, otp, otp_exp, ...userWithoutPassword } =
       updatedUser;
 
     return res.status(200).json({
@@ -127,14 +148,21 @@ export const getAllUsers = async (req: Request, res: Response) => {
         phone_number: true,
         address: true,
         createdAt: true,
-        updatedAt: true
+        updatedAt: true,
+        userImages: {
+          select: {
+            id: true,
+            image: true
+          }
+        }
         // Exclude sensitive fields like password
       }
     });
 
     return res.status(200).json({
       message: "Users fetched successfully",
-      data: users
+      data: users,
+      baseUrl: `${req.protocol}://${req.host}/images/`
     });
   } catch (error: any) {
     res.status(500).json({

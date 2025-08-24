@@ -6,7 +6,7 @@ const router = express.Router();
 const prisma = new PrismaClient();
 
 export const createPosts = async (req: Request, res: Response) => {
-  const { title, content, requirement, total, endDate, city, state, pincode } =
+  const { title, content, requirement, total, startDate, endDate, location, responsibility, designation, payment, paymentDate } =
     req.body;
   const userId = req.userId;
   try {
@@ -15,12 +15,15 @@ export const createPosts = async (req: Request, res: Response) => {
         userId: userId || "0",
         title: title || "Untitled",
         content: content || "No content",
+        role: designation || "No designation",
         requirement: requirement || "No requirement",
         total: Number(total),
         endDate: new Date(endDate),
-        city: city || "No city",
-        state: state || "No state",
-        pincode: pincode || "No pincode"
+        location: location || "No location",
+        responsibility: responsibility || "No responsibility",
+        startDate: new Date(startDate),
+        payment: payment || "No payment",
+        paymentDate: new Date(paymentDate)
       }
     });
     res.status(201).json(post);
@@ -31,7 +34,8 @@ export const createPosts = async (req: Request, res: Response) => {
 
 export const updatePost = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { title, content, requirement, total, endDate } = req.body;
+  const { title, content, requirement, total, endDate, startDate, location, responsibility, designation, payment, paymentDate } = req.body;
+
   try {
     const post = await prisma.post.findUnique({
       where: {
@@ -40,6 +44,10 @@ export const updatePost = async (req: Request, res: Response) => {
     });
     if (!post) {
       res.status(404).json({ message: "Post not found" });
+      return;
+    }
+    if (post.userId !== req.userId) {
+      res.status(403).json({ message: "Forbidden" });
       return;
     }
 
@@ -52,7 +60,13 @@ export const updatePost = async (req: Request, res: Response) => {
         content: content || post.content,
         requirement: requirement || post.requirement,
         total: Number(total) || post.total,
-        endDate: endDate ? endDate : post.endDate
+        endDate: endDate ? new Date(endDate) : post.endDate,
+        startDate: startDate ? new Date(startDate) : post.startDate,
+        paymentDate: paymentDate ? new Date(paymentDate) : post.paymentDate,
+        location: location || post.location,
+        responsibility: responsibility || post.responsibility,
+        role: designation || post.role,
+        payment: Number(payment) || post.payment
       }
     });
     res.status(201).json(updatePost);
@@ -73,6 +87,10 @@ export const deletePost = async (req: Request, res: Response) => {
       res.status(404).json({ message: "Post not found" });
       return;
     }
+    if (post.userId !== req.userId) {
+      res.status(403).json({ message: "Forbidden" });
+      return;
+    }
     await prisma.post.delete({
       where: {
         id
@@ -86,8 +104,7 @@ export const deletePost = async (req: Request, res: Response) => {
 
 export const getAllPosts = async (req: Request, res: Response) => {
   try {
-    const city = req.query.city as string;
-    const state = req.query.state as string;
+    const location = req.query.location as string;
 
     const posts = await prisma.post.findMany({
       where: {
@@ -95,7 +112,7 @@ export const getAllPosts = async (req: Request, res: Response) => {
         endDate: {
           gt: new Date()
         },
-        OR: [{ state }, { city }]
+        // OR: [{ location: { contains: location } }]
       }
     });
     res.status(200).json(posts);
