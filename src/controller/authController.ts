@@ -182,7 +182,6 @@ export const requestOTP = async (req: Request, res: Response) => {
         data: {
           email: isEmail ? identifier : undefined,
           phone_number: !isEmail ? identifier : undefined,
-          password: "", // Will be set during verification
           otp,
           otp_exp: otpExpiry
         }
@@ -283,15 +282,7 @@ export const verifyOTP = async (req: Request, res: Response) => {
     }
 
     // Determine if this is a new user (no password set)
-    const isNewUser = !user.name || user.password === "";
-
-    // For new users, require additional information
-    if (isNewUser && (!name || !password)) {
-      return res.status(400).json({
-        success: false,
-        message: "Name and password are required for new users"
-      });
-    }
+    const isNewUser = !user.name;
 
     // Generate JWT token
     const token = jwt.sign(
@@ -307,14 +298,6 @@ export const verifyOTP = async (req: Request, res: Response) => {
       otp_exp: null
     };
 
-    // For new users, update with provided information
-    if (isNewUser) {
-      // Hash password
-      const hashedPassword = await bcrypt.hash(password, 10);
-      updateData.name = name;
-      updateData.password = hashedPassword;
-    }
-
     // Update user
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
@@ -322,7 +305,7 @@ export const verifyOTP = async (req: Request, res: Response) => {
     });
 
     // Return success response without sensitive data
-    const { password: _, otp: __, otp_exp: ___, jwt_token, createdAt, updatedAt, ...userWithoutSensitiveData } = updatedUser;
+    const { otp: __, otp_exp: ___, jwt_token, createdAt, updatedAt, ...userWithoutSensitiveData } = updatedUser;
 
     return res.status(200).json({
       success: true,

@@ -13,7 +13,6 @@ model User {
   name          String?
   date_of_birth DateTime?
   phone_number  String?       @unique
-  password      String?
   role          String        @default("user")
   fcm_token     String?
   jwt_token     String?

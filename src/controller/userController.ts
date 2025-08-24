@@ -35,7 +35,7 @@ export const getProfile = async (req: Request, res: Response) => {
     }
 
     // Return user data without password, createdAt, and updatedAt
-    const { password, createdAt, updatedAt, jwt_token, otp, otp_exp, fcm_token, ...userWithoutPassword } = user;
+    const { createdAt, updatedAt, jwt_token, otp, otp_exp, fcm_token, ...userWithoutPassword } = user;
 
     return res.status(200).json({
       message: "Profile fetched successfully",
@@ -73,6 +73,7 @@ export const updateProfile = async (req: Request, res: Response) => {
     const {
       name,
       phone_number,
+      date_of_birth,
       address,
       height,
       weight,
@@ -89,6 +90,7 @@ export const updateProfile = async (req: Request, res: Response) => {
       data: {
         name,
         phone_number,
+        date_of_birth: date_of_birth ? new Date(date_of_birth) : user.date_of_birth,
         address: address || user.address,
         height: parseFloat(height) || user.height,
         weight: parseFloat(weight) || user.weight,
@@ -121,7 +123,7 @@ export const updateProfile = async (req: Request, res: Response) => {
     }
 
     // Return updated user data without password, createdAt, and updatedAt
-    const { password, createdAt, updatedAt, fcm_token, jwt_token, otp, otp_exp, ...userWithoutPassword } =
+    const { createdAt, updatedAt, fcm_token, jwt_token, otp, otp_exp, ...userWithoutPassword } =
       updatedUser;
 
     return res.status(200).json({
