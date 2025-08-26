@@ -6,7 +6,9 @@ import {
   getAllPosts,
   getPostById,
   getAppliedPosts,
-  applyToPost
+  applyToPost,
+  listPosts,
+  updateUserStatus
 } from "../controller/postController";
 import { authenticate, authorize } from "../middleware/authMiddleware";
 
@@ -21,5 +23,7 @@ router.get("/get-all", authorize(["user"]), getAllPosts);
 router.get("/:id", authorize(["user"]), getPostById);
 router.get("/applied/get-all", authorize(["user"]), getAppliedPosts);
 router.post("/apply/:id", authorize(["user"]), applyToPost);
+router.post("/list/:id", authorize(["admin", "recruiter"]), listPosts);
+router.put("/update-status/:id", authorize(["recruiter"]), updateUserStatus);
 
 export default router;

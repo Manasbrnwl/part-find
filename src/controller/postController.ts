@@ -1,6 +1,7 @@
 import express from "express";
 import { PrismaClient } from "@prisma/client";
 import { Request, Response } from "express";
+import { threadCpuUsage } from "node:process";
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -232,3 +233,80 @@ export const getAppliedPosts = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const listPosts = async (req: Request, res: Response) => {
+  const valid = await prisma.post.findFirst({
+    where: {
+      AND: [{ userId: req.userId },
+      { id: req.params.id }]
+    }
+  })
+  if (!valid) {
+    res.status(403).json({ message: "Forbidden" });
+    return;
+  }
+  const { id } = req.params;
+  try {
+    const list = await prisma.postApplied.findMany({
+      select: {
+        id: true,
+        status: true,
+        content: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            date_of_birth: true,
+            phone_number: true,
+            role: true,
+            height: true,
+            weight: true,
+            gender: true,
+            english_level: true,
+            address: true,
+            state: true,
+            country: true
+          }
+        }
+      },
+      where: {
+        postId: id,
+        user: {
+          is: {
+            is_active: true
+          }
+        }
+      }
+    });
+    res.status(200).json(list);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+}
+
+export const updateUserStatus = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  try {
+    const list = await prisma.postApplied.update({
+      where: {
+        id
+      },
+      data: {
+        status
+      }
+    });
+    res.status(200).json(list);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+}
