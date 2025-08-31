@@ -13,65 +13,81 @@ model User {
   name          String?
   date_of_birth DateTime?
   phone_number  String?       @unique
-  role          String        @default("user")
+  role          Role          @default(USER)
   fcm_token     String?
   jwt_token     String?
   otp           String?
   otp_exp       DateTime?
-  height        Float?
   weight        Float?
   gender        String?
-  english_level String?
   address       String?
   state         String?
   country       String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
-  posts         Post[]
-  comments      postApplied[]
-  userImages    images[]
+  height        Float?
   is_active     Boolean       @default(true)
+  english_level String?
+  posts         Post[]
+  userImages    images[]
+  comments      postApplied[]
 }
 
 model images {
   id        String   @id @default(uuid())
   userId    String
   image     String
-  user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model Post {
   id             String        @id @default(uuid())
-  user           User          @relation(fields: [userId], references: [id])
   userId         String
-  role           String?
   title          String        @db.VarChar(255)
-  content        String?       @db.Text
-  requirement    String?       @db.Text
-  responsibility String?       @db.Text
-  location       String?       @db.Text
-  payment        Float?
-  paymentDate    DateTime?
+  content        String?
+  requirement    String?
   total          Int           @default(1)
-  startDate      DateTime      @default(now())
   endDate        DateTime
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
-  comments       postApplied[]
+  location       String?
+  payment        Float?
+  paymentDate    DateTime?
+  responsibility String?
+  role           String?
+  startDate      DateTime      @default(now())
   is_active      Boolean       @default(true)
   company_name   String?
+  user           User          @relation(fields: [userId], references: [id])
+  comments       postApplied[]
+
+  @@unique([userId, title, startDate], map: "post_unique")
 }
 
 model postApplied {
   id        String   @id @default(uuid())
-  user      User     @relation(fields: [userId], references: [id])
   userId    String
-  post      Post     @relation(fields: [postId], references: [id])
   postId    String
-  status    String   @default("pending")
-  content   String   @db.Text
+  content   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  status    Status   @default(PENDING)
+  post      Post     @relation(fields: [postId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, postId], map: "user_post_unique")
+}
+
+enum Role {
+  USER
+  ADMIN
+  RECRUITER
+}
+
+enum Status {
+  PENDING
+  APPROVED
+  REJECTED
 }
