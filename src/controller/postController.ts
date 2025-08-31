@@ -310,3 +310,16 @@ export const updateUserStatus = async (req: Request, res: Response) => {
     });
   }
 }
+
+export const recruiterGetPost = async (req: Request, res: Response) => {
+  try {
+    const post = await prisma.post.findMany({ where: { userId: req.userId } })
+    res.status(200).json(post);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+}
