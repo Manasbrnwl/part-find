@@ -36,6 +36,6 @@ router
 
 
 // Get all users (admin only)
-router.get("/", authorize(["admin"]), getAllUsers);
+router.get("/", authorize(["ADMIN"]), getAllUsers);
 
 export default router;

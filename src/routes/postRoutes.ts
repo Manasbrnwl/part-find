@@ -17,16 +17,16 @@ const router = express.Router();
 
 router.use(authenticate);
 
-router.post("/", authorize(["admin", "recruiter"]), createPosts);
-router.put("/update/:id", authorize(["admin", "recruiter"]), updatePost);
-router.delete("/delete/:id", authorize(["admin", "recruiter"]), deletePost);
-router.get("/applied/get-all", authorize(["user"]), getAppliedPosts);
-router.post("/apply/:id", authorize(["user"]), applyToPost);
-router.post("/list/:id", authorize(["admin", "recruiter"]), listPosts);
-router.put("/update-status/:id", authorize(["recruiter"]), updateUserStatus);
-router.get("/get-all-post", authorize(["recruiter"]), recruiterGetPost)
-router.get("/get-all", authorize(["user"]), getAllPosts);
-router.get("/:id", authorize(["user"]), getPostById);
+router.post("/", authorize(["ADMIN", "RECRUITER"]), createPosts);
+router.put("/update/:id", authorize(["ADMIN", "RECRUITER"]), updatePost);
+router.delete("/delete/:id", authorize(["ADMIN", "RECRUITER"]), deletePost);
+router.get("/applied/get-all", authorize(["USER"]), getAppliedPosts);
+router.post("/apply/:id", authorize(["USER"]), applyToPost);
+router.post("/list/:id", authorize(["ADMIN", "RECRUITER"]), listPosts);
+router.put("/update-status/:id", authorize(["RECRUITER"]), updateUserStatus);
+router.get("/get-all-post", authorize(["RECRUITER"]), recruiterGetPost)
+router.get("/get-all", authorize(["USER"]), getAllPosts);
+router.get("/:id", authorize(["USER"]), getPostById);
 
 
 export default router;
