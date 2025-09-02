@@ -121,7 +121,6 @@ export const getAllPosts = async (req: Request, res: Response) => {
 
     const posts = await prisma.post.findMany({
       where: {
-        userId: req.userId,
         endDate: {
           gt: new Date()
         },
