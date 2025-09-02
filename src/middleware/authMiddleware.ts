@@ -82,6 +82,10 @@ export const authorize = (allowedRoles: string[]) => {
         return res.status(404).json({ message: "User not found" });
       }
 
+      if (user.role === null) {
+        return res.status(403).json({ message: "Forbidden: Insufficient permissions" });
+      }
+
       if (!allowedRoles.includes(user.role)) {
         return res
           .status(403)
