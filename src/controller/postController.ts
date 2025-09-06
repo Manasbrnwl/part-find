@@ -1,5 +1,5 @@
 import express from "express";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Status } from "@prisma/client";
 import { Request, Response } from "express";
 import { threadCpuUsage } from "node:process";
 
@@ -118,16 +118,50 @@ export const deletePost = async (req: Request, res: Response) => {
 export const getAllPosts = async (req: Request, res: Response) => {
   try {
     const location = req.query.location as string;
+    const { limit = 10, page = 1 } = req.query;
 
-    const posts = await prisma.post.findMany({
+    const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
+    const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
+    const skip = (pageNumber - 1) * pageSize;
+    const take = pageSize;
+    const [posts, total] = await Promise.all([await prisma.post.findMany({
       where: {
         endDate: {
           gt: new Date()
         },
-        // OR: [{ location: { contains: location } }]
+      }, include: {
+        comments: {
+          where: {
+            userId: req.userId
+          },
+          select: {
+            id: true,
+            status: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: "desc"
+      },
+      skip,
+      take
+    }), prisma.post.count({
+      where: {
+        endDate: {
+          gt: new Date()
+        }
       }
+    })]);
+
+    const postsWithFlag = posts.map(({ comments, ...rest }) => ({
+      ...rest,
+      appliedFlag: comments.length > 0 ? 1 : 0,
+      appliedStatus: comments?.[0]?.status || "Not Applied"
+    }));
+    res.status(200).json({
+      posts: postsWithFlag,
+      totalPages: Math.ceil(total / pageSize)
     });
-    res.status(200).json(posts);
   } catch (error: any) {
     res.status(500).json({
       success: false,
@@ -178,7 +212,7 @@ export const applyToPost = async (req: Request, res: Response) => {
         data: {
           userId,
           postId: id,
-          content: req.body.content,
+          content: req.body.content || "",
         },
       });
     }
@@ -194,7 +228,13 @@ export const applyToPost = async (req: Request, res: Response) => {
 
 export const getAppliedPosts = async (req: Request, res: Response) => {
   try {
-    const posts = await prisma.postApplied.findMany({
+    const { limit = 10, page = 1 } = req.query;
+
+    const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
+    const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
+    const skip = (pageNumber - 1) * pageSize;
+    const take = pageSize;
+    const [posts, total] = await Promise.all([await prisma.postApplied.findMany({
       select: {
         post: {
           select: {
@@ -217,13 +257,23 @@ export const getAppliedPosts = async (req: Request, res: Response) => {
         post: {
           endDate: 'desc'
         }
+      },
+      skip,
+      take
+    }),
+    prisma.postApplied.count({
+      where: {
+        userId: req.userId
       }
+    })]);
+    res.status(200).json({
+      posts: posts.map((post) => ({
+        ...post.post,
+        status: post.post.endDate > new Date() ? post.status : "closed",
+        content: post.content,
+      })),
+      totalPages: Math.ceil(total / pageSize),
     });
-    res.status(200).json(posts.map((post) => ({
-      ...post.post,
-      status: post.post.endDate > new Date() ? post.status : "closed",
-      content: post.content,
-    })));
   } catch (error: any) {
     res.status(500).json({
       success: false,
@@ -245,40 +295,68 @@ export const listPosts = async (req: Request, res: Response) => {
     return;
   }
   const { id } = req.params;
+  const { filter, page = "1", limit = "10" } = req.query;
+  const statusFilter: Status = typeof filter === "string" ? (filter as Status) : Status.PENDING;
+
+  // pagination numbers
+  const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
+  const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
+  const skip = (pageNumber - 1) * pageSize;
+  const take = pageSize;
   try {
-    const list = await prisma.postApplied.findMany({
-      select: {
-        id: true,
-        status: true,
-        content: true,
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            date_of_birth: true,
-            phone_number: true,
-            role: true,
-            height: true,
-            weight: true,
-            gender: true,
-            english_level: true,
-            address: true,
-            state: true,
-            country: true
-          }
-        }
-      },
-      where: {
-        postId: id,
-        user: {
-          is: {
-            is_active: true
-          }
-        }
-      }
+    const [list, total] = await Promise.all([
+      prisma.postApplied.findMany({
+        select: {
+          id: true,
+          status: true,
+          content: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              date_of_birth: true,
+              phone_number: true,
+              role: true,
+              height: true,
+              weight: true,
+              gender: true,
+              english_level: true,
+              address: true,
+              state: true,
+              country: true,
+            },
+          },
+        },
+        where: {
+          postId: id,
+          status: statusFilter,
+          user: {
+            is: {
+              is_active: true,
+            },
+          },
+        },
+        skip,
+        take,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.postApplied.count({
+        where: {
+          postId: id,
+          status: statusFilter,
+          user: {
+            is: {
+              is_active: true,
+            },
+          },
+        },
+      }),
+    ]);
+    return res.json({
+      list,
+      totalPages: Math.ceil(total / pageSize)
     });
-    res.status(200).json(list);
   } catch (error: any) {
     res.status(500).json({
       success: false,
