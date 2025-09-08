@@ -13,7 +13,6 @@ model User {
   name          String?
   date_of_birth DateTime?
   phone_number  String?       @unique
-  role          Role?         @default(USER)
   fcm_token     String?
   jwt_token     String?
   otp           String?
@@ -28,9 +27,11 @@ model User {
   height        Float?
   is_active     Boolean       @default(true)
   english_level String?
+  role          Role?         @default(USER)
   posts         Post[]
   userImages    images[]
   comments      postApplied[]
+  savePosts     savePosts[]
 }
 
 model images {
@@ -43,25 +44,27 @@ model images {
 }
 
 model Post {
-  id             String        @id @default(uuid())
+  id             String         @id @default(uuid())
   userId         String
-  title          String        @db.VarChar(255)
+  title          String         @db.VarChar(255)
   content        String?
   requirement    String?
-  total          Int           @default(1)
+  total          Int            @default(1)
   endDate        DateTime
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
   location       String?
   payment        Float?
   paymentDate    DateTime?
   responsibility String?
   role           String?
-  startDate      DateTime      @default(now())
-  is_active      Boolean       @default(true)
+  startDate      DateTime       @default(now())
+  is_active      Boolean        @default(true)
   company_name   String?
-  user           User          @relation(fields: [userId], references: [id])
+  user           User           @relation(fields: [userId], references: [id])
+  PostCategory   PostCategory[]
   comments       postApplied[]
+  savePosts      savePosts[]
 
   @@unique([userId, title, startDate], map: "post_unique")
 }
@@ -78,6 +81,43 @@ model postApplied {
   user      User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, postId], map: "user_post_unique")
+}
+
+model JobCategory {
+  id           Int            @id @default(autoincrement())
+  name         String         @unique @db.VarChar(100)
+  description  String?
+  is_active    Boolean        @default(true)
+  created_at   DateTime       @default(now()) @db.Timestamp(6)
+  updated_at   DateTime?      @db.Timestamp(6)
+  PostCategory PostCategory[]
+}
+
+model PostCategory {
+  id          Int         @id @default(autoincrement())
+  post_id     String
+  category_id Int
+  created_at  DateTime    @default(now()) @db.Timestamp(6)
+  updated_at  DateTime?   @db.Timestamp(6)
+  is_active   Boolean     @default(true)
+  JobCategory JobCategory @relation(fields: [category_id], references: [id], onUpdate: NoAction, map: "fk_category")
+  Post        Post        @relation(fields: [post_id], references: [id], onUpdate: NoAction, map: "fk_post")
+
+  @@unique([post_id, category_id], map: "post_category_unique")
+}
+
+model savePosts {
+  id        String   @id @default(uuid())
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  post      Post     @relation(fields: [postId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, postId], map: "user_save_post_unique")
+  @@index([userId], map: "user_save_post_index")
+  @@index([postId], map: "post_save_post_index")
 }
 
 enum Role {

@@ -126,25 +126,42 @@ export const getAllPosts = async (req: Request, res: Response) => {
     const take = pageSize;
     const [posts, total] = await Promise.all([await prisma.post.findMany({
       where: {
-        endDate: {
-          gt: new Date()
+        endDate: { gt: new Date() },
+      },
+      select: {
+        id: true,
+        userId: true,
+        title: true,
+        role: true,
+        content: true,
+        requirement: true,
+        total: true,
+        location: true,
+        payment: true,
+        paymentDate: true,
+        responsibility: true,
+        company_name: true,
+        is_active: true,
+        startDate: true,
+        endDate: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: {
+          select: { comments: true },
         },
-      }, include: {
         comments: {
-          where: {
-            userId: req.userId
-          },
           select: {
             id: true,
-            status: true
+            status: true,
+          },
+          where: {
+            userId: req.userId
           }
-        }
+        },
       },
-      orderBy: {
-        createdAt: "desc"
-      },
+      orderBy: { createdAt: "desc" },
       skip,
-      take
+      take,
     }), prisma.post.count({
       where: {
         endDate: {
@@ -153,10 +170,11 @@ export const getAllPosts = async (req: Request, res: Response) => {
       }
     })]);
 
-    const postsWithFlag = posts.map(({ comments, ...rest }) => ({
+    const postsWithFlag = posts.map(({ comments, _count, ...rest }) => ({
       ...rest,
       appliedFlag: comments.length > 0 ? 1 : 0,
-      appliedStatus: comments?.[0]?.status || "Not Applied"
+      appliedStatus: comments?.[0]?.status || "Not Applied",
+      appliedApplicants: _count.comments,
     }));
     res.status(200).json({
       posts: postsWithFlag,
@@ -400,3 +418,92 @@ export const recruiterGetPost = async (req: Request, res: Response) => {
     });
   }
 }
+
+export const savePost = async (req: Request, res: Response) => {
+  try {
+    const { postId } = req.params;
+    const post = await prisma.savePosts.create({
+      data: {
+        userId: req.userId as string,
+        postId: postId as string,
+      }
+    })
+    res.status(200).json(post);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+}
+
+export const getSavePosts = async (req: Request, res: Response) => {
+  try {
+    const saved = await prisma.savePosts.findMany({
+      where: {
+        userId: req.userId,
+        post: {
+          is: {
+            is_active: true,
+            endDate: { gte: new Date() },
+          },
+        },
+      },
+      select: {
+        id: true,
+        post: {
+          select: {
+            id: true,
+            userId: true,
+            title: true,
+            role: true,
+            content: true,
+            requirement: true,
+            total: true,
+            location: true,
+            payment: true,
+            paymentDate: true,
+            responsibility: true,
+            company_name: true,
+            is_active: true,
+            startDate: true,
+            endDate: true,
+            createdAt: true,
+            updatedAt: true,
+            _count: {
+              select: { comments: true },
+            },
+            comments: {
+              select: {
+                id: true,
+                status: true,
+              },
+              where: {
+                userId: req.userId
+              }
+            },
+          },
+        },
+      },
+    });
+    const savedPosts = saved.map(({ post }) => {
+      const { _count, comments, ...rest } = post; 
+
+      return {
+        ...rest,
+        appliedFlag: comments.length > 0 ? 1 : 0,
+        appliedStatus: comments?.[0]?.status || "Not Applied",
+        appliedApplicants: _count.comments,
+      };
+    });
+    res.status(200).json(savedPosts);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+}
+
