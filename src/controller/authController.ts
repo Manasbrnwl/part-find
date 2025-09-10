@@ -145,7 +145,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
  */
 export const requestOTP = async (req: Request, res: Response) => {
   try {
-    const { email, phone_number } = req.body;
+    const { email, phone_number, role } = req.body;
 
     if (!email && !phone_number) {
       return res.status(400).json({
@@ -159,6 +159,15 @@ export const requestOTP = async (req: Request, res: Response) => {
 
     // Check if user exists
     let user = await prisma.user.findFirst({
+      select:{
+        id: true,
+        name: true,
+        userImages:{
+          select:{
+            image: true
+          }
+        }
+      },
       where: {
         is_active: true,
         email: isEmail ? identifier : undefined,
@@ -178,14 +187,27 @@ export const requestOTP = async (req: Request, res: Response) => {
       });
     } else {
       // New user - create temporary user record
-      user = await prisma.user.create({
+      const newUser = await prisma.user.create({
         data: {
           email: isEmail ? identifier : undefined,
           phone_number: !isEmail ? identifier : undefined,
           otp,
-          otp_exp: otpExpiry
-        }
+          otp_exp: otpExpiry,
+          is_active: true, // Ensure user is active
+          role
+        },
+        select: {
+          id: true,
+          name: true,
+          userImages: {
+            select: {
+              image: true,
+            },
+          },
+        },
       });
+
+      user = newUser;
     }
 
     // Send OTP via email or SMS
@@ -215,8 +237,9 @@ export const requestOTP = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       message: `OTP sent to ${isEmail ? email : phone_number}`,
-      userId: user.id,
-      isNewUser: !user.name // If name is not set, it's likely a new user
+      userId: user?.id,
+      profile: user?.userImages,
+      isNewUser: !user?.name // If name is not set, it's likely a new user
     });
 
   } catch (error: any) {
