@@ -323,6 +323,13 @@ export const verifyOTP = async (req: Request, res: Response) => {
 
     // Update user
     const updatedUser = await prisma.user.update({
+      include:{
+        userImages:{
+          select:{
+            image: true
+          }
+        }
+      },
       where: { id: user.id },
       data: updateData
     });

@@ -100,11 +100,14 @@ export const deletePost = async (req: Request, res: Response) => {
       res.status(403).json({ message: "Forbidden" });
       return;
     }
-    await prisma.post.delete({
-      where: {
+    await prisma.post.update({
+      data:{
+        is_active: false
+      },
+      where:{
         id
       }
-    });
+    })
     res.status(200).json({ message: "Post deleted" });
   } catch (error: any) {
     res.status(500).json({
@@ -343,6 +346,11 @@ export const listPosts = async (req: Request, res: Response) => {
               address: true,
               state: true,
               country: true,
+              userImages:{
+                select:{
+                  image:true
+                }
+              }
             },
           },
         },
@@ -408,8 +416,51 @@ export const updateUserStatus = async (req: Request, res: Response) => {
 
 export const recruiterGetPost = async (req: Request, res: Response) => {
   try {
-    const post = await prisma.post.findMany({ where: { userId: req.userId } })
-    res.status(200).json(post);
+    const {filter} = req.query;
+    const postCount = await prisma.post.count({ 
+      where: {
+    userId: req.userId,
+    is_active: true,
+    endDate:
+      filter === "COMPLETED"
+        ? { lt: new Date() } // completed = endDate in future
+        : { gt: new Date() } // not completed = endDate in past
+  }})
+    const post = await prisma.post.findMany({ 
+      include:{
+        _count: {
+              select: { comments: true },
+            },
+      },
+      where: {
+    userId: req.userId,
+    is_active: true,
+    endDate:
+      filter === "COMPLETED"
+        ? { lt: new Date() } // completed = endDate in future
+        : { gt: new Date() } // not completed = endDate in past
+  }})
+  const postApplicationsCount = await prisma.postApplied.groupBy({
+  by: ["status"],
+  where: {
+    post: {
+      userId: req.userId,
+      is_active: true,
+      endDate:
+      filter === "COMPLETED"
+        ? { lt: new Date() } // completed = endDate in past
+        : { gt: new Date() } // not completed = endDate in future
+    },
+  },
+  _count: {
+    _all: true,
+  },
+});
+  const postsWithCount = post.map(({ _count, ...rest }) => ({
+      ...rest,
+      appliedApplicants: _count.comments,
+    }));
+    res.status(200).json({post: postsWithCount, dashboard: postApplicationsCount, count: postCount});
   } catch (error: any) {
     res.status(500).json({
       success: false,
