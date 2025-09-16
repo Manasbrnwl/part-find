@@ -7,8 +7,19 @@ const router = express.Router();
 const prisma = new PrismaClient();
 
 export const createPosts = async (req: Request, res: Response) => {
-  const { title, content, requirement, total, startDate, endDate, location, responsibility, designation, payment, paymentDate } =
-    req.body;
+  const {
+    title,
+    content,
+    requirement,
+    total,
+    startDate,
+    endDate,
+    location,
+    responsibility,
+    designation,
+    payment,
+    paymentDate
+  } = req.body;
   const userId = req.userId;
   try {
     const post = await prisma.post.create({
@@ -39,7 +50,19 @@ export const createPosts = async (req: Request, res: Response) => {
 
 export const updatePost = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { title, content, requirement, total, endDate, startDate, location, responsibility, designation, payment, paymentDate } = req.body;
+  const {
+    title,
+    content,
+    requirement,
+    total,
+    endDate,
+    startDate,
+    location,
+    responsibility,
+    designation,
+    payment,
+    paymentDate
+  } = req.body;
 
   try {
     const post = await prisma.post.findUnique({
@@ -101,13 +124,13 @@ export const deletePost = async (req: Request, res: Response) => {
       return;
     }
     await prisma.post.update({
-      data:{
+      data: {
         is_active: false
       },
-      where:{
+      where: {
         id
       }
-    })
+    });
     res.status(200).json({ message: "Post deleted" });
   } catch (error: any) {
     res.status(500).json({
@@ -127,60 +150,63 @@ export const getAllPosts = async (req: Request, res: Response) => {
     const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
     const skip = (pageNumber - 1) * pageSize;
     const take = pageSize;
-    const [posts, total] = await Promise.all([await prisma.post.findMany({
-      where: {
-        endDate: { gt: new Date() },
-      },
-      select: {
-        id: true,
-        userId: true,
-        title: true,
-        role: true,
-        content: true,
-        requirement: true,
-        total: true,
-        location: true,
-        payment: true,
-        paymentDate: true,
-        responsibility: true,
-        company_name: true,
-        is_active: true,
-        startDate: true,
-        endDate: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: {
-          select: { comments: true },
+    const [posts, total] = await Promise.all([
+      await prisma.post.findMany({
+        where: {
+          endDate: { gt: new Date() }
         },
-        comments: {
-          select: {
-            id: true,
-            status: true,
+        select: {
+          id: true,
+          userId: true,
+          title: true,
+          role: true,
+          content: true,
+          requirement: true,
+          total: true,
+          location: true,
+          payment: true,
+          paymentDate: true,
+          responsibility: true,
+          company_name: true,
+          is_active: true,
+          startDate: true,
+          endDate: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: {
+            select: { comments: true }
           },
-          where: {
-            userId: req.userId
+          comments: {
+            select: {
+              id: true,
+              status: true
+            },
+            where: {
+              userId: req.userId
+            }
           }
         },
-      },
-      orderBy: { createdAt: "desc" },
-      skip,
-      take,
-    }), prisma.post.count({
-      where: {
-        endDate: {
-          gt: new Date()
+        orderBy: { createdAt: "desc" },
+        skip,
+        take
+      }),
+      prisma.post.count({
+        where: {
+          endDate: {
+            gt: new Date()
+          }
         }
-      }
-    })]);
+      })
+    ]);
 
     const postsWithFlag = posts.map(({ comments, _count, ...rest }) => ({
       ...rest,
       appliedFlag: comments.length > 0 ? 1 : 0,
       appliedStatus: comments?.[0]?.status || "Not Applied",
-      appliedApplicants: _count.comments,
+      appliedApplicants: _count.comments
     }));
     res.status(200).json({
-      posts: postsWithFlag,
+      posts: postsWithFlag.filter((post) => post.appliedFlag === 0),
       totalPages: Math.ceil(total / pageSize)
     });
   } catch (error: any) {
@@ -228,13 +254,13 @@ export const applyToPost = async (req: Request, res: Response) => {
       res.status(404).json({ message: "Post not found" });
       return;
     }
-    if (typeof userId === 'string') {
+    if (typeof userId === "string") {
       await prisma.postApplied.create({
         data: {
           userId,
           postId: id,
-          content: req.body.content || "",
-        },
+          content: req.body.content || ""
+        }
       });
     }
     res.status(200).json({ message: "Applied to post" });
@@ -255,45 +281,47 @@ export const getAppliedPosts = async (req: Request, res: Response) => {
     const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
     const skip = (pageNumber - 1) * pageSize;
     const take = pageSize;
-    const [posts, total] = await Promise.all([await prisma.postApplied.findMany({
-      select: {
-        post: {
-          select: {
-            id: true,
-            title: true,
-            content: true,
-            total: true,
-            location: true,
-            role: true,
-            endDate: true
+    const [posts, total] = await Promise.all([
+      await prisma.postApplied.findMany({
+        select: {
+          post: {
+            select: {
+              id: true,
+              title: true,
+              content: true,
+              total: true,
+              location: true,
+              role: true,
+              endDate: true
+            }
+          },
+          status: true,
+          content: true
+        },
+        where: {
+          userId: req.userId
+        },
+        orderBy: {
+          post: {
+            endDate: "desc"
           }
         },
-        status: true,
-        content: true,
-      },
-      where: {
-        userId: req.userId
-      },
-      orderBy: {
-        post: {
-          endDate: 'desc'
+        skip,
+        take
+      }),
+      prisma.postApplied.count({
+        where: {
+          userId: req.userId
         }
-      },
-      skip,
-      take
-    }),
-    prisma.postApplied.count({
-      where: {
-        userId: req.userId
-      }
-    })]);
+      })
+    ]);
     res.status(200).json({
       posts: posts.map((post) => ({
         ...post.post,
         status: post.post.endDate > new Date() ? post.status : "closed",
-        content: post.content,
+        content: post.content
       })),
-      totalPages: Math.ceil(total / pageSize),
+      totalPages: Math.ceil(total / pageSize)
     });
   } catch (error: any) {
     res.status(500).json({
@@ -307,17 +335,17 @@ export const getAppliedPosts = async (req: Request, res: Response) => {
 export const listPosts = async (req: Request, res: Response) => {
   const valid = await prisma.post.findFirst({
     where: {
-      AND: [{ userId: req.userId },
-      { id: req.params.id }]
+      AND: [{ userId: req.userId }, { id: req.params.id }]
     }
-  })
+  });
   if (!valid) {
     res.status(403).json({ message: "Forbidden" });
     return;
   }
   const { id } = req.params;
   const { filter, page = "1", limit = "10" } = req.query;
-  const statusFilter: Status = typeof filter === "string" ? (filter as Status) : Status.PENDING;
+  const statusFilter: Status =
+    typeof filter === "string" ? (filter as Status) : Status.PENDING;
 
   // pagination numbers
   const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
@@ -346,26 +374,26 @@ export const listPosts = async (req: Request, res: Response) => {
               address: true,
               state: true,
               country: true,
-              userImages:{
-                select:{
-                  image:true
+              userImages: {
+                select: {
+                  image: true
                 }
               }
-            },
-          },
+            }
+          }
         },
         where: {
           postId: id,
           status: statusFilter,
           user: {
             is: {
-              is_active: true,
-            },
-          },
+              is_active: true
+            }
+          }
         },
         skip,
         take,
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: "desc" }
       }),
       prisma.postApplied.count({
         where: {
@@ -373,11 +401,11 @@ export const listPosts = async (req: Request, res: Response) => {
           status: statusFilter,
           user: {
             is: {
-              is_active: true,
-            },
-          },
-        },
-      }),
+              is_active: true
+            }
+          }
+        }
+      })
     ]);
     return res.json({
       list,
@@ -390,7 +418,7 @@ export const listPosts = async (req: Request, res: Response) => {
       error: process.env.NODE_ENV === "development" ? error.message : undefined
     });
   }
-}
+};
 
 export const updateUserStatus = async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -412,55 +440,61 @@ export const updateUserStatus = async (req: Request, res: Response) => {
       error: process.env.NODE_ENV === "development" ? error.message : undefined
     });
   }
-}
+};
 
 export const recruiterGetPost = async (req: Request, res: Response) => {
   try {
-    const {filter} = req.query;
-    const postCount = await prisma.post.count({ 
+    const { filter } = req.query;
+    const postCount = await prisma.post.count({
       where: {
-    userId: req.userId,
-    is_active: true,
-    endDate:
-      filter === "COMPLETED"
-        ? { lt: new Date() } // completed = endDate in future
-        : { gt: new Date() } // not completed = endDate in past
-  }})
-    const post = await prisma.post.findMany({ 
-      include:{
+        userId: req.userId,
+        is_active: true,
+        endDate:
+          filter === "COMPLETED"
+            ? { lt: new Date() } // completed = endDate in future
+            : { gt: new Date() } // not completed = endDate in past
+      }
+    });
+    const post = await prisma.post.findMany({
+      include: {
         _count: {
-              select: { comments: true },
-            },
+          select: { comments: true }
+        }
       },
       where: {
-    userId: req.userId,
-    is_active: true,
-    endDate:
-      filter === "COMPLETED"
-        ? { lt: new Date() } // completed = endDate in future
-        : { gt: new Date() } // not completed = endDate in past
-  }})
-  const postApplicationsCount = await prisma.postApplied.groupBy({
-  by: ["status"],
-  where: {
-    post: {
-      userId: req.userId,
-      is_active: true,
-      endDate:
-      filter === "COMPLETED"
-        ? { lt: new Date() } // completed = endDate in past
-        : { gt: new Date() } // not completed = endDate in future
-    },
-  },
-  _count: {
-    _all: true,
-  },
-});
-  const postsWithCount = post.map(({ _count, ...rest }) => ({
+        userId: req.userId,
+        is_active: true,
+        endDate:
+          filter === "COMPLETED"
+            ? { lt: new Date() } // completed = endDate in future
+            : { gt: new Date() } // not completed = endDate in past
+      }
+    });
+    const postApplicationsCount = await prisma.postApplied.groupBy({
+      by: ["status"],
+      where: {
+        post: {
+          userId: req.userId,
+          is_active: true,
+          endDate:
+            filter === "COMPLETED"
+              ? { lt: new Date() } // completed = endDate in past
+              : { gt: new Date() } // not completed = endDate in future
+        }
+      },
+      _count: {
+        _all: true
+      }
+    });
+    const postsWithCount = post.map(({ _count, ...rest }) => ({
       ...rest,
-      appliedApplicants: _count.comments,
+      appliedApplicants: _count.comments
     }));
-    res.status(200).json({post: postsWithCount, dashboard: postApplicationsCount, count: postCount});
+    res.status(200).json({
+      post: postsWithCount,
+      dashboard: postApplicationsCount,
+      count: postCount
+    });
   } catch (error: any) {
     res.status(500).json({
       success: false,
@@ -468,7 +502,7 @@ export const recruiterGetPost = async (req: Request, res: Response) => {
       error: process.env.NODE_ENV === "development" ? error.message : undefined
     });
   }
-}
+};
 
 export const savePost = async (req: Request, res: Response) => {
   try {
@@ -476,9 +510,9 @@ export const savePost = async (req: Request, res: Response) => {
     const post = await prisma.savePosts.create({
       data: {
         userId: req.userId as string,
-        postId: postId as string,
+        postId: postId as string
       }
-    })
+    });
     res.status(200).json(post);
   } catch (error: any) {
     res.status(500).json({
@@ -487,7 +521,7 @@ export const savePost = async (req: Request, res: Response) => {
       error: process.env.NODE_ENV === "development" ? error.message : undefined
     });
   }
-}
+};
 
 export const getSavePosts = async (req: Request, res: Response) => {
   try {
@@ -497,9 +531,9 @@ export const getSavePosts = async (req: Request, res: Response) => {
         post: {
           is: {
             is_active: true,
-            endDate: { gte: new Date() },
-          },
-        },
+            endDate: { gte: new Date() }
+          }
+        }
       },
       select: {
         id: true,
@@ -523,29 +557,29 @@ export const getSavePosts = async (req: Request, res: Response) => {
             createdAt: true,
             updatedAt: true,
             _count: {
-              select: { comments: true },
+              select: { comments: true }
             },
             comments: {
               select: {
                 id: true,
-                status: true,
+                status: true
               },
               where: {
                 userId: req.userId
               }
-            },
-          },
-        },
-      },
+            }
+          }
+        }
+      }
     });
     const savedPosts = saved.map(({ post }) => {
-      const { _count, comments, ...rest } = post; 
+      const { _count, comments, ...rest } = post;
 
       return {
         ...rest,
         appliedFlag: comments.length > 0 ? 1 : 0,
         appliedStatus: comments?.[0]?.status || "Not Applied",
-        appliedApplicants: _count.comments,
+        appliedApplicants: _count.comments
       };
     });
     res.status(200).json(savedPosts);
@@ -556,5 +590,4 @@ export const getSavePosts = async (req: Request, res: Response) => {
       error: process.env.NODE_ENV === "development" ? error.message : undefined
     });
   }
-}
-
+};
