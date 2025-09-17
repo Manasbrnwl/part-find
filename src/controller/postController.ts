@@ -128,38 +128,38 @@ export const getAllPosts = async (req: Request, res: Response) => {
     const skip = (pageNumber - 1) * pageSize;
     const take = pageSize;
     const [posts, total] = await Promise.all([await prisma.post.findMany({
-      where: {
+        where: {
         endDate: { gt: new Date() },
-      },
-      select: {
-        id: true,
-        userId: true,
-        title: true,
-        role: true,
-        content: true,
-        requirement: true,
-        total: true,
-        location: true,
-        payment: true,
-        paymentDate: true,
-        responsibility: true,
-        company_name: true,
-        is_active: true,
-        startDate: true,
-        endDate: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: {
-          select: { comments: true },
         },
-        comments: {
-          select: {
-            id: true,
-            status: true,
+        select: {
+          id: true,
+          userId: true,
+          title: true,
+          role: true,
+          content: true,
+          requirement: true,
+          total: true,
+          location: true,
+          payment: true,
+          paymentDate: true,
+          responsibility: true,
+          company_name: true,
+          is_active: true,
+          startDate: true,
+          endDate: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: {
+          select: { comments: true },
           },
-          where: {
-            userId: req.userId
-          }
+          comments: {
+            select: {
+              id: true,
+            status: true,
+            },
+            where: {
+              userId: req.userId
+            }
         },
         savedPosts: {
           select:{
@@ -169,16 +169,16 @@ export const getAllPosts = async (req: Request, res: Response) => {
             userId: req.userId
           }
         }
-      },
+        },
       orderBy: { createdAt: "desc" },
       skip,
       take,
     }), prisma.post.count({
-      where: {
-        endDate: {
-          gt: new Date()
+        where: {
+          endDate: {
+            gt: new Date()
+          }
         }
-      }
     })]);
 
     const postsWithFlag = posts.map(({ comments, _count, savedPosts, ...rest }) => ({
@@ -265,36 +265,36 @@ export const getAppliedPosts = async (req: Request, res: Response) => {
     const skip = (pageNumber - 1) * pageSize;
     const take = pageSize;
     const [posts, total] = await Promise.all([await prisma.postApplied.findMany({
-      select: {
-        post: {
-          select: {
-            id: true,
-            title: true,
-            content: true,
-            total: true,
-            location: true,
-            role: true,
-            endDate: true
+        select: {
+          post: {
+            select: {
+              id: true,
+              title: true,
+              content: true,
+              total: true,
+              location: true,
+              role: true,
+              endDate: true
+            }
+          },
+          status: true,
+        content: true,
+        },
+        where: {
+          userId: req.userId
+        },
+        orderBy: {
+          post: {
+          endDate: 'desc'
           }
         },
-        status: true,
-        content: true,
-      },
-      where: {
-        userId: req.userId
-      },
-      orderBy: {
-        post: {
-          endDate: 'desc'
+        skip,
+        take
+      }),
+      prisma.postApplied.count({
+        where: {
+          userId: req.userId
         }
-      },
-      skip,
-      take
-    }),
-    prisma.postApplied.count({
-      where: {
-        userId: req.userId
-      }
     })]);
     res.status(200).json({
       posts: posts.map((post) => ({
@@ -426,46 +426,46 @@ export const updateUserStatus = async (req: Request, res: Response) => {
 export const recruiterGetPost = async (req: Request, res: Response) => {
   try {
     const {filter} = req.query;
-    const postCount = await prisma.post.count({ 
+    const postCount = await prisma.post.count({
       where: {
-    userId: req.userId,
-    is_active: true,
-    endDate:
-      filter === "COMPLETED"
-        ? { lt: new Date() } // completed = endDate in future
-        : { gt: new Date() } // not completed = endDate in past
+        userId: req.userId,
+        is_active: true,
+        endDate:
+          filter === "COMPLETED"
+            ? { lt: new Date() } // completed = endDate in future
+            : { gt: new Date() } // not completed = endDate in past
   }})
-    const post = await prisma.post.findMany({ 
+    const post = await prisma.post.findMany({
       include:{
         _count: {
               select: { comments: true },
             },
       },
       where: {
-    userId: req.userId,
-    is_active: true,
-    endDate:
-      filter === "COMPLETED"
-        ? { lt: new Date() } // completed = endDate in future
-        : { gt: new Date() } // not completed = endDate in past
+        userId: req.userId,
+        is_active: true,
+        endDate:
+          filter === "COMPLETED"
+            ? { lt: new Date() } // completed = endDate in future
+            : { gt: new Date() } // not completed = endDate in past
   }})
-  const postApplicationsCount = await prisma.postApplied.groupBy({
-  by: ["status"],
-  where: {
-    post: {
-      userId: req.userId,
-      is_active: true,
-      endDate:
-      filter === "COMPLETED"
-        ? { lt: new Date() } // completed = endDate in past
-        : { gt: new Date() } // not completed = endDate in future
+    const postApplicationsCount = await prisma.postApplied.groupBy({
+      by: ["status"],
+      where: {
+        post: {
+          userId: req.userId,
+          is_active: true,
+          endDate:
+            filter === "COMPLETED"
+              ? { lt: new Date() } // completed = endDate in past
+              : { gt: new Date() } // not completed = endDate in future
     },
-  },
-  _count: {
+      },
+      _count: {
     _all: true,
   },
-});
-  const postsWithCount = post.map(({ _count, ...rest }) => ({
+    });
+    const postsWithCount = post.map(({ _count, ...rest }) => ({
       ...rest,
       appliedApplicants: _count.comments,
     }));
@@ -548,7 +548,7 @@ export const getSavePosts = async (req: Request, res: Response) => {
       },
     });
     const savedPosts = saved.map(({ post }) => {
-      const { _count, comments, ...rest } = post; 
+      const { _count, comments, ...rest } = post;
 
       return {
         ...rest,
