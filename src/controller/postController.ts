@@ -161,6 +161,14 @@ export const getAllPosts = async (req: Request, res: Response) => {
             userId: req.userId
           }
         },
+        savedPosts: {
+          select:{
+            id: true
+          },
+          where: {
+            userId: req.userId
+          }
+        }
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -173,11 +181,12 @@ export const getAllPosts = async (req: Request, res: Response) => {
       }
     })]);
 
-    const postsWithFlag = posts.map(({ comments, _count, ...rest }) => ({
+    const postsWithFlag = posts.map(({ comments, _count, savedPosts, ...rest }) => ({
       ...rest,
       appliedFlag: comments.length > 0 ? 1 : 0,
       appliedStatus: comments?.[0]?.status || "Not Applied",
       appliedApplicants: _count.comments,
+      savedFlag: savedPosts.length > 0 ? 1 : 0,
     }));
     res.status(200).json({
       posts: postsWithFlag,
