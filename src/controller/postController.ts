@@ -7,8 +7,19 @@ const router = express.Router();
 const prisma = new PrismaClient();
 
 export const createPosts = async (req: Request, res: Response) => {
-  const { title, content, requirement, total, startDate, endDate, location, responsibility, designation, payment, paymentDate } =
-    req.body;
+  const {
+    title,
+    content,
+    requirement,
+    total,
+    startDate,
+    endDate,
+    location,
+    responsibility,
+    designation,
+    payment,
+    paymentDate,
+  } = req.body;
   const userId = req.userId;
   try {
     const post = await prisma.post.create({
@@ -24,28 +35,40 @@ export const createPosts = async (req: Request, res: Response) => {
         responsibility: responsibility || "No responsibility",
         startDate: new Date(startDate),
         payment: payment || "No payment",
-        paymentDate: new Date(paymentDate)
-      }
+        paymentDate: new Date(paymentDate),
+      },
     });
     res.status(201).json(post);
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
 
 export const updatePost = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { title, content, requirement, total, endDate, startDate, location, responsibility, designation, payment, paymentDate } = req.body;
+  const {
+    title,
+    content,
+    requirement,
+    total,
+    endDate,
+    startDate,
+    location,
+    responsibility,
+    designation,
+    payment,
+    paymentDate,
+  } = req.body;
 
   try {
     const post = await prisma.post.findUnique({
       where: {
-        id
-      }
+        id,
+      },
     });
     if (!post) {
       res.status(404).json({ message: "Post not found" });
@@ -58,7 +81,7 @@ export const updatePost = async (req: Request, res: Response) => {
 
     const updatePost = await prisma.post.update({
       where: {
-        id
+        id,
       },
       data: {
         title: title || post.title,
@@ -71,15 +94,15 @@ export const updatePost = async (req: Request, res: Response) => {
         location: location || post.location,
         responsibility: responsibility || post.responsibility,
         role: designation || post.role,
-        payment: Number(payment) || post.payment
-      }
+        payment: Number(payment) || post.payment,
+      },
     });
     res.status(201).json(updatePost);
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -89,8 +112,8 @@ export const deletePost = async (req: Request, res: Response) => {
   try {
     const post = await prisma.post.findUnique({
       where: {
-        id
-      }
+        id,
+      },
     });
     if (!post) {
       res.status(404).json({ message: "Post not found" });
@@ -101,19 +124,19 @@ export const deletePost = async (req: Request, res: Response) => {
       return;
     }
     await prisma.post.update({
-      data:{
-        is_active: false
+      data: {
+        is_active: false,
       },
-      where:{
-        id
-      }
-    })
+      where: {
+        id,
+      },
+    });
     res.status(200).json({ message: "Post deleted" });
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -127,9 +150,10 @@ export const getAllPosts = async (req: Request, res: Response) => {
     const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
     const skip = (pageNumber - 1) * pageSize;
     const take = pageSize;
-    const [posts, total] = await Promise.all([await prisma.post.findMany({
+    const [posts, total] = await Promise.all([
+      await prisma.post.findMany({
         where: {
-        endDate: { gt: new Date() },
+          endDate: { gt: new Date() },
         },
         select: {
           id: true,
@@ -150,53 +174,57 @@ export const getAllPosts = async (req: Request, res: Response) => {
           createdAt: true,
           updatedAt: true,
           _count: {
-          select: { comments: true },
+            select: { comments: true },
           },
           comments: {
             select: {
               id: true,
-            status: true,
+              status: true,
             },
             where: {
-              userId: req.userId
-            }
-        },
-        savedPosts: {
-          select:{
-            id: true
+              userId: req.userId,
+            },
           },
-          where: {
-            userId: req.userId
-          }
-        }
+          savePosts: {
+            select: {
+              id: true,
+            },
+            where: {
+              userId: req.userId,
+            },
+          },
         },
-      orderBy: { createdAt: "desc" },
-      skip,
-      take,
-    }), prisma.post.count({
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+      }),
+      prisma.post.count({
         where: {
           endDate: {
-            gt: new Date()
-          }
-        }
-    })]);
+            gt: new Date(),
+          },
+        },
+      }),
+    ]);
 
-    const postsWithFlag = posts.map(({ comments, _count, savedPosts, ...rest }) => ({
-      ...rest,
-      appliedFlag: comments.length > 0 ? 1 : 0,
-      appliedStatus: comments?.[0]?.status || "Not Applied",
-      appliedApplicants: _count.comments,
-      savedFlag: savedPosts.length > 0 ? 1 : 0,
-    }));
+    const postsWithFlag = posts.map(
+      ({ comments, _count, savePosts, ...rest }) => ({
+        ...rest,
+        appliedFlag: comments.length > 0 ? 1 : 0,
+        appliedStatus: comments?.[0]?.status || "Not Applied",
+        appliedApplicants: _count.comments,
+        savedFlag: savePosts.length > 0 ? 1 : 0,
+      })
+    );
     res.status(200).json({
       posts: postsWithFlag,
-      totalPages: Math.ceil(total / pageSize)
+      totalPages: Math.ceil(total / pageSize),
     });
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -207,8 +235,8 @@ export const getPostById = async (req: Request, res: Response) => {
     const post = await prisma.post.findUnique({
       where: {
         id,
-        userId: req.userId
-      }
+        userId: req.userId,
+      },
     });
     if (!post) {
       res.status(404).json({ message: "Post not found" });
@@ -219,7 +247,7 @@ export const getPostById = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -230,14 +258,14 @@ export const applyToPost = async (req: Request, res: Response) => {
   try {
     const post = await prisma.post.findUnique({
       where: {
-        id
-      }
+        id,
+      },
     });
     if (!post) {
       res.status(404).json({ message: "Post not found" });
       return;
     }
-    if (typeof userId === 'string') {
+    if (typeof userId === "string") {
       await prisma.postApplied.create({
         data: {
           userId,
@@ -251,7 +279,7 @@ export const applyToPost = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -264,7 +292,8 @@ export const getAppliedPosts = async (req: Request, res: Response) => {
     const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
     const skip = (pageNumber - 1) * pageSize;
     const take = pageSize;
-    const [posts, total] = await Promise.all([await prisma.postApplied.findMany({
+    const [posts, total] = await Promise.all([
+      await prisma.postApplied.findMany({
         select: {
           post: {
             select: {
@@ -274,28 +303,29 @@ export const getAppliedPosts = async (req: Request, res: Response) => {
               total: true,
               location: true,
               role: true,
-              endDate: true
-            }
+              endDate: true,
+            },
           },
           status: true,
-        content: true,
+          content: true,
         },
         where: {
-          userId: req.userId
+          userId: req.userId,
         },
         orderBy: {
           post: {
-          endDate: 'desc'
-          }
+            endDate: "desc",
+          },
         },
         skip,
-        take
+        take,
       }),
       prisma.postApplied.count({
         where: {
-          userId: req.userId
-        }
-    })]);
+          userId: req.userId,
+        },
+      }),
+    ]);
     res.status(200).json({
       posts: posts.map((post) => ({
         ...post.post,
@@ -308,7 +338,7 @@ export const getAppliedPosts = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -316,17 +346,17 @@ export const getAppliedPosts = async (req: Request, res: Response) => {
 export const listPosts = async (req: Request, res: Response) => {
   const valid = await prisma.post.findFirst({
     where: {
-      AND: [{ userId: req.userId },
-      { id: req.params.id }]
-    }
-  })
+      AND: [{ userId: req.userId }, { id: req.params.id }],
+    },
+  });
   if (!valid) {
     res.status(403).json({ message: "Forbidden" });
     return;
   }
   const { id } = req.params;
   const { filter, page = "1", limit = "10" } = req.query;
-  const statusFilter: Status = typeof filter === "string" ? (filter as Status) : Status.PENDING;
+  const statusFilter: Status =
+    typeof filter === "string" ? (filter as Status) : Status.PENDING;
 
   // pagination numbers
   const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
@@ -355,11 +385,11 @@ export const listPosts = async (req: Request, res: Response) => {
               address: true,
               state: true,
               country: true,
-              userImages:{
-                select:{
-                  image:true
-                }
-              }
+              userImages: {
+                select: {
+                  image: true,
+                },
+              },
             },
           },
         },
@@ -390,16 +420,16 @@ export const listPosts = async (req: Request, res: Response) => {
     ]);
     return res.json({
       list,
-      totalPages: Math.ceil(total / pageSize)
+      totalPages: Math.ceil(total / pageSize),
     });
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
-}
+};
 
 export const updateUserStatus = async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -407,25 +437,25 @@ export const updateUserStatus = async (req: Request, res: Response) => {
   try {
     const list = await prisma.postApplied.update({
       where: {
-        id
+        id,
       },
       data: {
-        status
-      }
+        status,
+      },
     });
     res.status(200).json(list);
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
-}
+};
 
 export const recruiterGetPost = async (req: Request, res: Response) => {
   try {
-    const {filter} = req.query;
+    const { filter } = req.query;
     const postCount = await prisma.post.count({
       where: {
         userId: req.userId,
@@ -433,13 +463,14 @@ export const recruiterGetPost = async (req: Request, res: Response) => {
         endDate:
           filter === "COMPLETED"
             ? { lt: new Date() } // completed = endDate in future
-            : { gt: new Date() } // not completed = endDate in past
-  }})
+            : { gt: new Date() }, // not completed = endDate in past
+      },
+    });
     const post = await prisma.post.findMany({
-      include:{
+      include: {
         _count: {
-              select: { comments: true },
-            },
+          select: { comments: true },
+        },
       },
       where: {
         userId: req.userId,
@@ -447,8 +478,9 @@ export const recruiterGetPost = async (req: Request, res: Response) => {
         endDate:
           filter === "COMPLETED"
             ? { lt: new Date() } // completed = endDate in future
-            : { gt: new Date() } // not completed = endDate in past
-  }})
+            : { gt: new Date() }, // not completed = endDate in past
+      },
+    });
     const postApplicationsCount = await prisma.postApplied.groupBy({
       by: ["status"],
       where: {
@@ -458,26 +490,30 @@ export const recruiterGetPost = async (req: Request, res: Response) => {
           endDate:
             filter === "COMPLETED"
               ? { lt: new Date() } // completed = endDate in past
-              : { gt: new Date() } // not completed = endDate in future
-    },
+              : { gt: new Date() }, // not completed = endDate in future
+        },
       },
       _count: {
-    _all: true,
-  },
+        _all: true,
+      },
     });
     const postsWithCount = post.map(({ _count, ...rest }) => ({
       ...rest,
       appliedApplicants: _count.comments,
     }));
-    res.status(200).json({post: postsWithCount, dashboard: postApplicationsCount, count: postCount});
+    res.status(200).json({
+      post: postsWithCount,
+      dashboard: postApplicationsCount,
+      count: postCount,
+    });
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
-}
+};
 
 export const savePost = async (req: Request, res: Response) => {
   try {
@@ -486,17 +522,17 @@ export const savePost = async (req: Request, res: Response) => {
       data: {
         userId: req.userId as string,
         postId: postId as string,
-      }
-    })
+      },
+    });
     res.status(200).json(post);
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
-}
+};
 
 export const getSavePosts = async (req: Request, res: Response) => {
   try {
@@ -540,8 +576,8 @@ export const getSavePosts = async (req: Request, res: Response) => {
                 status: true,
               },
               where: {
-                userId: req.userId
-              }
+                userId: req.userId,
+              },
             },
           },
         },
@@ -562,8 +598,7 @@ export const getSavePosts = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
-}
-
+};
