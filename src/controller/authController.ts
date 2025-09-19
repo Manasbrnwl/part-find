@@ -4,6 +4,12 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import { calculateOTPExpiry, generateOTP, isOTPExpired } from "../../utils/otp/functions.otp";
+import {
+  handleControllerError,
+  handleNotFoundError,
+  handleValidationError,
+  asyncHandler
+} from "../utils/errorHandler";
 const { sendEmailNotification } = require("../../utils/notification/email.notification");
 
 dotenv.config();
@@ -143,114 +149,100 @@ const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
  * @param req Request object with email or phone_number
  * @param res Response object
  */
-export const requestOTP = async (req: Request, res: Response) => {
-  try {
-    const { email, phone_number, role } = req.body;
+export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
+  const { email, phone_number, role } = req.body;
 
-    if (!email && !phone_number) {
-      return res.status(400).json({
-        success: false,
-        message: "Email or phone number is required"
-      });
+  if (!email && !phone_number) {
+    throw handleValidationError("Email or phone number is required");
+  }
+
+  const identifier = email || phone_number;
+  const isEmail = !!email;
+
+  // Check if user exists
+  let user = await prisma.user.findFirst({
+    select:{
+      id: true,
+      name: true,
+      userImages:{
+        select:{
+          image: true
+        }
+      }
+    },
+    where: {
+      is_active: true,
+      email: isEmail ? identifier : undefined,
+      phone_number: !isEmail ? identifier : undefined
     }
+  });
 
-    const identifier = email || phone_number;
-    const isEmail = !!email;
+  // Generate OTP
+  const otp = generateOTP();
+  const otpExpiry = calculateOTPExpiry();
 
-    // Check if user exists
-    let user = await prisma.user.findFirst({
-      select:{
+  if (user) {
+    // Existing user - update with new OTP
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { otp, otp_exp: otpExpiry }
+    });
+  } else {
+    // New user - create temporary user record
+    const newUser = await prisma.user.create({
+      data: {
+        email: isEmail ? identifier : undefined,
+        phone_number: !isEmail ? identifier : undefined,
+        otp,
+        otp_exp: otpExpiry,
+        is_active: true, // Ensure user is active
+        role
+      },
+      select: {
         id: true,
         name: true,
-        userImages:{
-          select:{
-            image: true
-          }
-        }
-      },
-      where: {
-        is_active: true,
-        email: isEmail ? identifier : undefined,
-        phone_number: !isEmail ? identifier : undefined
-      }
-    });
-
-    // Generate OTP
-    const otp = generateOTP();
-    const otpExpiry = calculateOTPExpiry();
-
-    if (user) {
-      // Existing user - update with new OTP
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { otp, otp_exp: otpExpiry }
-      });
-    } else {
-      // New user - create temporary user record
-      const newUser = await prisma.user.create({
-        data: {
-          email: isEmail ? identifier : undefined,
-          phone_number: !isEmail ? identifier : undefined,
-          otp,
-          otp_exp: otpExpiry,
-          is_active: true, // Ensure user is active
-          role
-        },
-        select: {
-          id: true,
-          name: true,
-          userImages: {
-            select: {
-              image: true,
-            },
+        userImages: {
+          select: {
+            image: true,
           },
         },
-      });
+      },
+    });
 
-      user = newUser;
-    }
+    user = newUser;
+  }
 
-    // Send OTP via email or SMS
-    let sent = false;
-    if (isEmail) {
-      // Send email with OTP
-      await sendEmailNotification(
-        identifier,
-        "Part Find - Authentication OTP",
-        `Your OTP for authentication is: ${otp}. It will expire in 3 minutes.`,
-        `<h1>Authentication OTP</h1><p>Your OTP for authentication is: <strong>${otp}</strong></p><p>It will expire in 3 minutes.</p>`
-      );
-      sent = true;
-    } else {
-      // For SMS implementation (placeholder)
-      // Implement SMS sending logic here
-      sent = true;
-    }
+  // Send OTP via email or SMS
+  let sent = false;
+  if (isEmail) {
+    // Send email with OTP
+    await sendEmailNotification(
+      identifier,
+      "Part Find - Authentication OTP",
+      `Your OTP for authentication is: ${otp}. It will expire in 3 minutes.`,
+      `<h1>Authentication OTP</h1><p>Your OTP for authentication is: <strong>${otp}</strong></p><p>It will expire in 3 minutes.</p>`
+    );
+    sent = true;
+  } else {
+    // For SMS implementation (placeholder)
+    // Implement SMS sending logic here
+    sent = true;
+  }
 
-    if (!sent) {
-      return res.status(500).json({
-        success: false,
-        message: `Failed to send OTP to ${isEmail ? "email" : "phone"}`
-      });
-    }
+  if (!sent) {
+    throw new Error(`Failed to send OTP to ${isEmail ? "email" : "phone"}`);
+  }
 
-    return res.status(200).json({
-      success: true,
-      message: `OTP sent to ${isEmail ? email : phone_number}`,
+  res.status(200).json({
+    success: true,
+    message: `OTP sent to ${isEmail ? email : phone_number}`,
+    data: {
       userId: user?.id,
       profile: user?.userImages,
       isNewUser: !user?.name // If name is not set, it's likely a new user
-    });
-
-  } catch (error: any) {
-    console.error("OTP request error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
-    });
-  }
-};
+    }
+  });
+});
 
 
 /**
@@ -258,99 +250,76 @@ export const requestOTP = async (req: Request, res: Response) => {
  * @param req Request object with userId, otp, and user details for new users
  * @param res Response object
  */
-export const verifyOTP = async (req: Request, res: Response) => {
-  try {
-    const { userId, otp, name, password } = req.body;
+export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
+  const { userId, otp, name, password } = req.body;
 
-    if (!userId || !otp) {
-      return res.status(400).json({
-        success: false,
-        message: "User ID and OTP are required"
-      });
-    }
+  if (!userId || !otp) {
+    throw handleValidationError("User ID and OTP are required");
+  }
 
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { id: userId }
-    });
+  // Find user
+  const user = await prisma.user.findUnique({
+    where: { id: userId }
+  });
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
-    }
+  if (!user) {
+    throw handleNotFoundError("User");
+  }
 
-    // Check if OTP exists and is not expired
-    if (!user.otp || !user.otp_exp) {
-      return res.status(400).json({
-        success: false,
-        message: "No OTP was generated for this user"
-      });
-    }
+  // Check if OTP exists and is not expired
+  if (!user.otp || !user.otp_exp) {
+    throw handleValidationError("No OTP was generated for this user");
+  }
 
-    if (isOTPExpired(user.otp_exp)) {
-      return res.status(400).json({
-        success: false,
-        message: "OTP has expired"
-      });
-    }
+  if (isOTPExpired(user.otp_exp)) {
+    throw handleValidationError("OTP has expired");
+  }
 
-    // Verify OTP
-    if (user.otp !== otp.toString()) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid OTP"
-      });
-    }
+  // Verify OTP
+  if (user.otp !== otp.toString()) {
+    throw handleValidationError("Invalid OTP");
+  }
 
-    // Determine if this is a new user (no password set)
-    const isNewUser = !user.name;
+  // Determine if this is a new user (no password set)
+  const isNewUser = !user.name;
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user.id, email: user.email },
-      JWT_SECRET,
-      { expiresIn: "24h" }
-    );
+  // Generate JWT token
+  const token = jwt.sign(
+    { userId: user.id, email: user.email },
+    JWT_SECRET,
+    { expiresIn: "24h" }
+  );
 
-    // Update user data
-    const updateData: any = {
-      jwt_token: token,
-      otp: null,  // Clear OTP after successful verification
-      otp_exp: null
-    };
+  // Update user data
+  const updateData: any = {
+    jwt_token: token,
+    otp: null,  // Clear OTP after successful verification
+    otp_exp: null
+  };
 
-    // Update user
-    const updatedUser = await prisma.user.update({
-      include:{
-        userImages:{
-          select:{
-            image: true
-          }
+  // Update user
+  const updatedUser = await prisma.user.update({
+    include:{
+      userImages:{
+        select:{
+          image: true
         }
-      },
-      where: { id: user.id },
-      data: updateData
-    });
+      }
+    },
+    where: { id: user.id },
+    data: updateData
+  });
 
-    // Return success response without sensitive data
-    const { otp: __, otp_exp: ___, jwt_token, createdAt, updatedAt, ...userWithoutSensitiveData } = updatedUser;
+  // Return success response without sensitive data
+  const { otp: __, otp_exp: ___, jwt_token, createdAt, updatedAt, ...userWithoutSensitiveData } = updatedUser;
 
-    return res.status(200).json({
-      success: true,
-      message: isNewUser ? "Signup successful" : "Login successful",
+  res.status(200).json({
+    success: true,
+    message: isNewUser ? "Signup successful" : "Login successful",
+    data: {
       user: userWithoutSensitiveData,
       token,
       isNewUser
-    });
-
-  } catch (error: any) {
-    console.error("OTP verification error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
-    });
-  }
-};
+    }
+  });
+});
