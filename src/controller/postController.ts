@@ -7,7 +7,7 @@ import {
   handleNotFoundError,
   handleForbiddenError,
   handleValidationError,
-  asyncHandler
+  asyncHandler,
 } from "../utils/errorHandler";
 
 const router = express.Router();
@@ -26,7 +26,8 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
     designation,
     payment,
     paymentDate,
-    company_name
+    company_name,
+    categories,
   } = req.body;
   const userId = req.userId;
 
@@ -55,14 +56,24 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
       startDate: new Date(startDate),
       payment: payment || "No payment",
       paymentDate: new Date(paymentDate),
-      company_name
+      company_name,
     },
   });
-  
+
+  if (categories) {
+    let categoriesList = categories.split(",");
+    await prisma.postCategory.createMany({
+      data: categoriesList?.map((id: string) => ({
+        post_id: post.id,
+        category_id: parseInt(id),
+      })),
+    });
+  }
+
   res.status(201).json({
     success: true,
     message: "Post created successfully",
-    data: post
+    data: post,
   });
 });
 
@@ -89,11 +100,11 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
   const post = await prisma.post.findUnique({
     where: { id },
   });
-  
+
   if (!post) {
     throw handleNotFoundError("Post");
   }
-  
+
   if (post.userId !== req.userId) {
     throw handleForbiddenError("You don't have permission to update this post");
   }
@@ -114,17 +125,17 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
       payment: Number(payment) || post.payment,
     },
   });
-  
+
   res.status(200).json({
     success: true,
     message: "Post updated successfully",
-    data: updatedPost
+    data: updatedPost,
   });
 });
 
 export const deletePost = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  
+
   if (!id) {
     throw handleValidationError("Post ID is required");
   }
@@ -132,11 +143,11 @@ export const deletePost = asyncHandler(async (req: Request, res: Response) => {
   const post = await prisma.post.findUnique({
     where: { id },
   });
-  
+
   if (!post) {
     throw handleNotFoundError("Post");
   }
-  
+
   if (post.userId !== req.userId) {
     throw handleForbiddenError("You don't have permission to delete this post");
   }
@@ -145,10 +156,10 @@ export const deletePost = asyncHandler(async (req: Request, res: Response) => {
     data: { is_active: false },
     where: { id },
   });
-  
+
   res.status(200).json({
     success: true,
-    message: "Post deleted successfully"
+    message: "Post deleted successfully",
   });
 });
 
@@ -160,7 +171,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
   const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
   const skip = (pageNumber - 1) * pageSize;
   const take = pageSize;
-  
+
   const [posts, total] = await Promise.all([
     prisma.post.findMany({
       where: {
@@ -227,7 +238,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
       savedFlag: savePosts.length > 0 ? 1 : 0,
     })
   );
-  
+
   res.status(200).json({
     success: true,
     message: "Posts retrieved successfully",
@@ -242,7 +253,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
 
 export const getPostById = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  
+
   if (!id) {
     throw handleValidationError("Post ID is required");
   }
@@ -254,26 +265,26 @@ export const getPostById = asyncHandler(async (req: Request, res: Response) => {
       is_active: true,
     },
   });
-  
+
   if (!post) {
     throw handleNotFoundError("Post");
   }
-  
+
   res.status(200).json({
     success: true,
     message: "Post retrieved successfully",
-    data: post
+    data: post,
   });
 });
 
 export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const userId = req.userId;
-  
+
   if (!id) {
     throw handleValidationError("Post ID is required");
   }
-  
+
   if (!userId) {
     throw handleValidationError("User ID is required");
   }
@@ -284,15 +295,15 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
       is_active: true,
     },
   });
-  
+
   if (!post) {
     throw handleNotFoundError("Post");
   }
-  
+
   if (post.endDate <= new Date()) {
     throw handleValidationError("Cannot apply to expired post");
   }
-  
+
   if (post.userId === userId) {
     throw handleValidationError("Cannot apply to your own post");
   }
@@ -304,7 +315,7 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
       postId: id,
     },
   });
-  
+
   if (existingApplication) {
     throw handleValidationError("You have already applied to this post");
   }
@@ -316,76 +327,78 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
       content: req.body.content || "",
     },
   });
-  
+
   res.status(201).json({
     success: true,
     message: "Successfully applied to post",
-    data: application
+    data: application,
   });
 });
 
-export const getAppliedPosts = asyncHandler(async (req: Request, res: Response) => {
-  const { limit = 10, page = 1 } = req.query;
+export const getAppliedPosts = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { limit = 10, page = 1 } = req.query;
 
-  const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
-  const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
-  const skip = (pageNumber - 1) * pageSize;
-  const take = pageSize;
-  
-  const [posts, total] = await Promise.all([
-    prisma.postApplied.findMany({
-      select: {
-        post: {
-          select: {
-            id: true,
-            title: true,
-            content: true,
-            total: true,
-            location: true,
-            role: true,
-            endDate: true,
+    const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
+    const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
+    const skip = (pageNumber - 1) * pageSize;
+    const take = pageSize;
+
+    const [posts, total] = await Promise.all([
+      prisma.postApplied.findMany({
+        select: {
+          post: {
+            select: {
+              id: true,
+              title: true,
+              content: true,
+              total: true,
+              location: true,
+              role: true,
+              endDate: true,
+            },
+          },
+          status: true,
+          content: true,
+        },
+        where: {
+          userId: req.userId,
+        },
+        orderBy: {
+          post: {
+            endDate: "desc",
           },
         },
-        status: true,
-        content: true,
-      },
-      where: {
-        userId: req.userId,
-      },
-      orderBy: {
-        post: {
-          endDate: "desc",
+        skip,
+        take,
+      }),
+      prisma.postApplied.count({
+        where: {
+          userId: req.userId,
         },
+      }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: "Applied posts retrieved successfully",
+      data: {
+        posts: posts.map((post) => ({
+          ...post.post,
+          status: post.post.endDate > new Date() ? post.status : "closed",
+          content: post.content,
+        })),
+        totalPages: Math.ceil(total / pageSize),
+        currentPage: pageNumber,
+        totalPosts: total,
       },
-      skip,
-      take,
-    }),
-    prisma.postApplied.count({
-      where: {
-        userId: req.userId,
-      },
-    }),
-  ]);
-  
-  res.status(200).json({
-    success: true,
-    message: "Applied posts retrieved successfully",
-    data: {
-      posts: posts.map((post) => ({
-        ...post.post,
-        status: post.post.endDate > new Date() ? post.status : "closed",
-        content: post.content,
-      })),
-      totalPages: Math.ceil(total / pageSize),
-      currentPage: pageNumber,
-      totalPosts: total,
-    },
-  });
-});
+    });
+  }
+);
 
 export const listPosts = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  
+
   if (!id) {
     throw handleValidationError("Post ID is required");
   }
@@ -395,9 +408,11 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
       AND: [{ userId: req.userId }, { id: id }],
     },
   });
-  
+
   if (!valid) {
-    throw handleForbiddenError("You don't have permission to view applications for this post");
+    throw handleForbiddenError(
+      "You don't have permission to view applications for this post"
+    );
   }
 
   const { filter, page = "1", limit = "10" } = req.query;
@@ -409,7 +424,7 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
   const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
   const skip = (pageNumber - 1) * pageSize;
   const take = pageSize;
-  
+
   const [list, total] = await Promise.all([
     prisma.postApplied.findMany({
       select: {
@@ -464,7 +479,7 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
       },
     }),
   ]);
-  
+
   res.status(200).json({
     success: true,
     message: "Post applications retrieved successfully",
@@ -477,116 +492,123 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
-export const updateUserStatus = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { status } = req.body;
-  
-  if (!id) {
-    throw handleValidationError("Application ID is required");
-  }
-  
-  if (!status) {
-    throw handleValidationError("Status is required");
-  }
+export const updateUserStatus = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { status } = req.body;
 
-  // Verify the application exists and belongs to a post owned by the current user
-  const application = await prisma.postApplied.findUnique({
-    where: { id },
-    include: {
-      post: {
-        select: {
-          userId: true,
-        },
-      },
-    },
-  });
-  
-  if (!application) {
-    throw handleNotFoundError("Application");
-  }
-  
-  if (application.post.userId !== req.userId) {
-    throw handleForbiddenError("You don't have permission to update this application status");
-  }
+    if (!id) {
+      throw handleValidationError("Application ID is required");
+    }
 
-  const updatedApplication = await prisma.postApplied.update({
-    where: { id },
-    data: { status },
-  });
-  
-  res.status(200).json({
-    success: true,
-    message: "Application status updated successfully",
-    data: updatedApplication
-  });
-});
+    if (!status) {
+      throw handleValidationError("Status is required");
+    }
 
-export const recruiterGetPost = asyncHandler(async (req: Request, res: Response) => {
-  const { filter } = req.query;
-  
-  const dateFilter = filter === "COMPLETED"
-    ? { lt: new Date() } // completed = endDate in past
-    : { gt: new Date() }; // not completed = endDate in future
-
-  const [postCount, posts, postApplicationsCount] = await Promise.all([
-    prisma.post.count({
-      where: {
-        userId: req.userId,
-        is_active: true,
-        endDate: dateFilter,
-      },
-    }),
-    prisma.post.findMany({
+    // Verify the application exists and belongs to a post owned by the current user
+    const application = await prisma.postApplied.findUnique({
+      where: { id },
       include: {
-        _count: {
-          select: { comments: true },
+        post: {
+          select: {
+            userId: true,
+          },
         },
       },
-      where: {
-        userId: req.userId,
-        is_active: true,
-        endDate: dateFilter,
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.postApplied.groupBy({
-      by: ["status"],
-      where: {
-        post: {
+    });
+
+    if (!application) {
+      throw handleNotFoundError("Application");
+    }
+
+    if (application.post.userId !== req.userId) {
+      throw handleForbiddenError(
+        "You don't have permission to update this application status"
+      );
+    }
+
+    const updatedApplication = await prisma.postApplied.update({
+      where: { id },
+      data: { status },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Application status updated successfully",
+      data: updatedApplication,
+    });
+  }
+);
+
+export const recruiterGetPost = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { filter } = req.query;
+
+    const dateFilter =
+      filter === "COMPLETED"
+        ? { lt: new Date() } // completed = endDate in past
+        : { gt: new Date() }; // not completed = endDate in future
+
+    const [postCount, posts, postApplicationsCount] = await Promise.all([
+      prisma.post.count({
+        where: {
           userId: req.userId,
           is_active: true,
           endDate: dateFilter,
         },
-      },
-      _count: {
-        _all: true,
-      },
-    }),
-  ]);
+      }),
+      prisma.post.findMany({
+        include: {
+          _count: {
+            select: { comments: true },
+          },
+        },
+        where: {
+          userId: req.userId,
+          is_active: true,
+          endDate: dateFilter,
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.postApplied.groupBy({
+        by: ["status"],
+        where: {
+          post: {
+            userId: req.userId,
+            is_active: true,
+            endDate: dateFilter,
+          },
+        },
+        _count: {
+          _all: true,
+        },
+      }),
+    ]);
 
-  const postsWithCount = posts.map(({ _count, ...rest }) => ({
-    ...rest,
-    appliedApplicants: _count.comments,
-  }));
-  
-  res.status(200).json({
-    success: true,
-    message: "Recruiter posts retrieved successfully",
-    data: {
-      posts: postsWithCount,
-      dashboard: postApplicationsCount,
-      count: postCount,
-    },
-  });
-});
+    const postsWithCount = posts.map(({ _count, ...rest }) => ({
+      ...rest,
+      appliedApplicants: _count.comments,
+    }));
+
+    res.status(200).json({
+      success: true,
+      message: "Recruiter posts retrieved successfully",
+      data: {
+        posts: postsWithCount,
+        dashboard: postApplicationsCount,
+        count: postCount,
+      },
+    });
+  }
+);
 
 export const savePost = asyncHandler(async (req: Request, res: Response) => {
   const { postId } = req.params;
-  
+
   if (!postId) {
     throw handleValidationError("Post ID is required");
   }
-  
+
   if (!req.userId) {
     throw handleValidationError("User ID is required");
   }
@@ -598,7 +620,7 @@ export const savePost = asyncHandler(async (req: Request, res: Response) => {
       is_active: true,
     },
   });
-  
+
   if (!postExists) {
     throw handleNotFoundError("Post");
   }
@@ -610,7 +632,7 @@ export const savePost = asyncHandler(async (req: Request, res: Response) => {
       postId: postId,
     },
   });
-  
+
   if (existingSave) {
     throw handleValidationError("Post is already saved");
   }
@@ -621,79 +643,80 @@ export const savePost = asyncHandler(async (req: Request, res: Response) => {
       postId: postId,
     },
   });
-  
+
   res.status(201).json({
     success: true,
     message: "Post saved successfully",
-    data: savedPost
+    data: savedPost,
   });
 });
 
-export const getSavePosts = asyncHandler(async (req: Request, res: Response) => {
-  const saved = await prisma.savePosts.findMany({
-    where: {
-      userId: req.userId,
-      post: {
-        is: {
-          is_active: true,
-          endDate: { gte: new Date() },
-        },
-      },
-    },
-    select: {
-      id: true,
-      post: {
-        select: {
-          id: true,
-          userId: true,
-          title: true,
-          role: true,
-          content: true,
-          requirement: true,
-          total: true,
-          location: true,
-          payment: true,
-          paymentDate: true,
-          responsibility: true,
-          company_name: true,
-          is_active: true,
-          startDate: true,
-          endDate: true,
-          createdAt: true,
-          updatedAt: true,
-          _count: {
-            select: { comments: true },
-          },
-          comments: {
-            select: {
-              id: true,
-              status: true,
-            },
-            where: {
-              userId: req.userId,
-            },
+export const getSavePosts = asyncHandler(
+  async (req: Request, res: Response) => {
+    const saved = await prisma.savePosts.findMany({
+      where: {
+        userId: req.userId,
+        post: {
+          is: {
+            is_active: true,
+            endDate: { gte: new Date() },
           },
         },
       },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-  
-  const savedPosts = saved.map(({ post }) => {
-    const { _count, comments, ...rest } = post;
+      select: {
+        id: true,
+        post: {
+          select: {
+            id: true,
+            userId: true,
+            title: true,
+            role: true,
+            content: true,
+            requirement: true,
+            total: true,
+            location: true,
+            payment: true,
+            paymentDate: true,
+            responsibility: true,
+            company_name: true,
+            is_active: true,
+            startDate: true,
+            endDate: true,
+            createdAt: true,
+            updatedAt: true,
+            _count: {
+              select: { comments: true },
+            },
+            comments: {
+              select: {
+                id: true,
+                status: true,
+              },
+              where: {
+                userId: req.userId,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
 
-    return {
-      ...rest,
-      appliedFlag: comments.length > 0 ? 1 : 0,
-      appliedStatus: comments?.[0]?.status || "Not Applied",
-      appliedApplicants: _count.comments,
-    };
-  });
-  
-  res.status(200).json({
-    success: true,
-    message: "Saved posts retrieved successfully",
-    data: savedPosts
-  });
-});
+    const savedPosts = saved.map(({ post }) => {
+      const { _count, comments, ...rest } = post;
 
+      return {
+        ...rest,
+        appliedFlag: comments.length > 0 ? 1 : 0,
+        appliedStatus: comments?.[0]?.status || "Not Applied",
+        appliedApplicants: _count.comments,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Saved posts retrieved successfully",
+      data: savedPosts,
+    });
+  }
+);

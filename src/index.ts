@@ -6,6 +6,7 @@ import morgan from "morgan";
 import authRoutes from "./routes/authRoutes";
 import userRoutes from "./routes/userRoutes";
 import postRoutes from "./routes/postRoutes";
+import masterRoutes from "./routes/masterRoutes";
 
 dotenv.config();
 
@@ -29,6 +30,8 @@ app.use("/auth", authRoutes);
 app.use("/users", userRoutes);
 // Post routes
 app.use("/post", postRoutes);
+//master routes
+app.use("/master", masterRoutes);
 
 // Legacy route - consider migrating this to proper controller pattern
 app.use("/seed", require("./routes/user"));
