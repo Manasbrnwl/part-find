@@ -278,3 +278,147 @@ export const loginGoogleUser = asyncHandler(
     }
   }
 );
+
+/**
+ * Logout user - clear jwt_token and fcm_token
+ * @param req Request object with userId from auth middleware
+ * @param res Response object
+ */
+export const logout = asyncHandler(async (req: Request, res: Response) => {
+  // @ts-ignore - userId will be added by auth middleware
+  const userId = req.userId;
+
+  if (!userId) {
+    throw new Error("User ID is required");
+  }
+
+  // Find user
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw handleNotFoundError("User");
+  }
+
+  // Clear JWT token and FCM token
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      jwt_token: null,
+      fcm_token: null,
+    },
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Logout successful",
+    data: {},
+  });
+});
+
+/**
+ * Delete user profile - soft delete by setting is_active to false
+ * Also deletes related data: images, posts, applications, saved posts, industries, gig types
+ * @param req Request object with userId from auth middleware
+ * @param res Response object
+ */
+export const deleteProfile = asyncHandler(
+  async (req: Request, res: Response) => {
+    // @ts-ignore - userId will be added by auth middleware
+    const userId = req.userId;
+
+    if (!userId) {
+      throw new Error("User ID is required");
+    }
+
+    // Find user
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw handleNotFoundError("User");
+    }
+
+    // Delete all related data
+    // Delete user images
+    await prisma.images.deleteMany({
+      where: { userId },
+    });
+
+    // Delete user posts and their applications
+    const userPosts = await prisma.post.findMany({
+      where: { userId },
+      select: { id: true },
+    });
+
+    const postIds = userPosts.map((post) => post.id);
+
+    // Delete applications for user's posts
+    if (postIds.length > 0) {
+      await prisma.postApplied.deleteMany({
+        where: { postId: { in: postIds } },
+      });
+
+      // Delete post categories for user's posts
+      await prisma.postCategory.deleteMany({
+        where: { post_id: { in: postIds } },
+      });
+
+      // Delete saved posts related to user's posts
+      await prisma.savePosts.deleteMany({
+        where: { postId: { in: postIds } },
+      });
+    }
+
+    // Delete user posts
+    await prisma.post.deleteMany({
+      where: { userId },
+    });
+
+    // Delete user applications to other posts
+    await prisma.postApplied.deleteMany({
+      where: { userId },
+    });
+
+    // Delete user saved posts
+    await prisma.savePosts.deleteMany({
+      where: { userId },
+    });
+
+    // Delete user categories
+    await prisma.userCategory.deleteMany({
+      where: { user_id: userId },
+    });
+
+    // Delete recruiter industries
+    await prisma.recruiterIndustry.deleteMany({
+      where: { user_id: userId },
+    });
+
+    // Delete recruiter gig types
+    await prisma.recruiterGigType.deleteMany({
+      where: { user_id: userId },
+    });
+
+    // Soft delete user - set is_active to false
+    const deletedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        is_active: false,
+        jwt_token: null,
+        fcm_token: null,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Profile deleted successfully",
+      data: {
+        deletedUserId: deletedUser.id,
+        email: deletedUser.email,
+      },
+    });
+  }
+);

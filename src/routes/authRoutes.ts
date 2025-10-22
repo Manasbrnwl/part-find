@@ -2,16 +2,21 @@ import express from "express";
 import {
   loginGoogleUser,
   requestOTP,
-  verifyOTP
+  verifyOTP,
+  logout,
+  deleteProfile
 } from "../controller/authController";
+import { authenticate } from "../middleware/authMiddleware";
 
 const router = express.Router();
 
-// Auth routes
+// Public auth routes
 router.post("/request-otp", requestOTP);
 router.post("/verify-otp", verifyOTP);
-
-//Third party login route
 router.post("/firebase-signin", loginGoogleUser);
+
+// Protected auth routes
+router.post("/logout", authenticate, logout);
+router.delete("/delete-profile", authenticate, deleteProfile);
 
 export default router;
