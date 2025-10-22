@@ -14,8 +14,8 @@ const initializeFirebase = () => {
       credential: admin.credential.cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n")
-      })
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+      }),
     });
 
     return admin;
@@ -55,8 +55,8 @@ const sendFCMNotification = async (fcmToken: string, notification: any) => {
         title: notification.title,
         body: notification.body,
         reminderId: notification.reminderId.toString(),
-        type: notification.type
-      }
+        type: notification.type,
+      },
     };
 
     const response = await admin.messaging().send(message);
@@ -66,7 +66,7 @@ const sendFCMNotification = async (fcmToken: string, notification: any) => {
   }
 };
 
-module.exports = {
+export {
   getFirebaseAdmin,
-  sendFCMNotification
+  sendFCMNotification,
 };

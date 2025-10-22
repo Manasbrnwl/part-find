@@ -6,16 +6,17 @@ import dotenv from "dotenv";
 import {
   calculateOTPExpiry,
   generateOTP,
-  isOTPExpired
+  isOTPExpired,
 } from "../../utils/otp/functions.otp";
 import {
   handleControllerError,
   handleNotFoundError,
   handleValidationError,
-  asyncHandler
+  asyncHandler,
 } from "../utils/errorHandler";
+import { getFirebaseAdmin } from "../../utils/firebase";
 const {
-  sendEmailNotification
+  sendEmailNotification,
 } = require("../../utils/notification/email.notification");
 
 dotenv.config();
@@ -45,15 +46,15 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
       name: true,
       userImages: {
         select: {
-          image: true
-        }
-      }
+          image: true,
+        },
+      },
     },
     where: {
       is_active: true,
       email: isEmail ? identifier : undefined,
-      phone_number: !isEmail ? identifier : undefined
-    }
+      phone_number: !isEmail ? identifier : undefined,
+    },
   });
 
   // Generate OTP
@@ -64,7 +65,7 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
     // Existing user - update with new OTP
     await prisma.user.update({
       where: { id: user.id },
-      data: { otp, otp_exp: otpExpiry }
+      data: { otp, otp_exp: otpExpiry },
     });
   } else {
     // New user - create temporary user record
@@ -75,17 +76,17 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
         otp,
         otp_exp: otpExpiry,
         is_active: true, // Ensure user is active
-        role
+        role,
       },
       select: {
         id: true,
         name: true,
         userImages: {
           select: {
-            image: true
-          }
-        }
-      }
+            image: true,
+          },
+        },
+      },
     });
 
     user = newUser;
@@ -118,8 +119,8 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
     data: {
       userId: user?.id,
       profile: user?.userImages,
-      isNewUser: !user?.name // If name is not set, it's likely a new user
-    }
+      isNewUser: !user?.name, // If name is not set, it's likely a new user
+    },
   });
 });
 
@@ -137,7 +138,7 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
 
   // Find user
   const user = await prisma.user.findUnique({
-    where: { id: userId }
+    where: { id: userId },
   });
 
   if (!user) {
@@ -163,14 +164,14 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
 
   // Generate JWT token
   const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, {
-    expiresIn: "24h"
+    expiresIn: "24h",
   });
 
   // Update user data
   const updateData: any = {
     jwt_token: token,
     otp: null, // Clear OTP after successful verification
-    otp_exp: null
+    otp_exp: null,
   };
 
   // Update user
@@ -178,12 +179,12 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
     include: {
       userImages: {
         select: {
-          image: true
-        }
-      }
+          image: true,
+        },
+      },
     },
     where: { id: user.id },
-    data: updateData
+    data: updateData,
   });
 
   // Return success response without sensitive data
@@ -202,8 +203,8 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
     data: {
       user: userWithoutSensitiveData,
       token,
-      isNewUser
-    }
+      isNewUser,
+    },
   });
 });
 
@@ -219,7 +220,7 @@ export const loginGoogleUser = asyncHandler(
       if (!idToken || !fcmToken) {
         return res.status(400).json({
           success: false,
-          message: "Google ID token and FCM token are required"
+          message: "Google ID token and FCM token are required",
         });
       }
       const admin = getFirebaseAdmin();
@@ -228,33 +229,33 @@ export const loginGoogleUser = asyncHandler(
 
       let user = await prisma.user.findUnique({
         where: {
-          email
-        }
+          email,
+        },
       });
       if (!user) {
         user = await prisma.user.create({
           data: {
             id: user_id,
             name,
-            email
-          }
+            email,
+          },
         });
       }
       const token = jwt.sign(
         { userId: user.id, email: user.email },
         JWT_SECRET,
         {
-          expiresIn: "24h"
+          expiresIn: "24h",
         }
       );
       user = await prisma.user.update({
         where: {
-          id: user.id
+          id: user.id,
         },
         data: {
           jwt_token: token,
-          fcm_token: fcmToken
-        }
+          fcm_token: fcmToken,
+        },
       });
       res.json({
         success: true,
@@ -264,15 +265,15 @@ export const loginGoogleUser = asyncHandler(
           email: user.email,
           phone: user.phone_number || "",
           role: user.role,
-          token
-        }
+          token,
+        },
       });
     } catch (error: any) {
       res.status(500).json({
         success: false,
         message: "Server error",
         error:
-          process.env.NODE_ENV === "development" ? error.message : undefined
+          process.env.NODE_ENV === "development" ? error.message : undefined,
       });
     }
   }

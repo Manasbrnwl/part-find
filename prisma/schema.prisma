@@ -8,31 +8,64 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  name          String?
-  date_of_birth DateTime?
-  phone_number  String?        @unique
-  fcm_token     String?
-  jwt_token     String?
-  otp           String?
-  otp_exp       DateTime?
-  weight        Float?
-  gender        String?
-  address       String?
-  state         String?
-  country       String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  height        Float?
-  is_active     Boolean        @default(true)
-  english_level String?
-  role          Role?          @default(USER)
-  posts         Post[]
-  userImages    images[]
-  comments      postApplied[]
-  savePosts     savePosts[]
-  UserCategory  UserCategory[]
+  id                    String                @id @default(uuid())
+  email                 String                @unique
+  name                  String?
+  date_of_birth         DateTime?
+  phone_number          String?               @unique
+  fcm_token             String?
+  jwt_token             String?
+  otp                   String?
+  otp_exp               DateTime?
+  weight                Float?
+  gender                String?
+  address               String?
+  state                 String?
+  country               String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  height                Float?
+  is_active             Boolean               @default(true)
+  english_level         String?
+  role                  Role?                 @default(USER)
+
+  // Recruiter-specific fields
+  recruiter_company_name      String?
+  recruiter_type              String?           // Individual, Company, Agency, Event Organizer
+  recruiter_company_registration String?       // GST/PAN (optional)
+  recruiter_company_address   String?
+  recruiter_company_logo      String?           // URL to logo image
+
+  // Relations
+  posts                 Post[]
+  userImages            images[]
+  comments              postApplied[]
+  savePosts             savePosts[]
+  UserCategory          UserCategory[]
+  recruiterIndustries   RecruiterIndustry[]  @relation("UserToIndustries")
+  recruiterGigTypes     RecruiterGigType[]   @relation("UserToGigTypes")
+}
+
+model RecruiterIndustry {
+  id            Int       @id @default(autoincrement())
+  user_id       String
+  industry      String    // Events, Hospitality, Retail, Logistics, etc.
+  created_at    DateTime  @default(now()) @db.Timestamp(6)
+  is_active     Boolean   @default(true)
+  user          User      @relation("UserToIndustries", fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, industry])
+}
+
+model RecruiterGigType {
+  id            Int       @id @default(autoincrement())
+  user_id       String
+  gigType       String    // Promoters, Ushers, Event Staff, Security, etc.
+  created_at    DateTime  @default(now()) @db.Timestamp(6)
+  is_active     Boolean   @default(true)
+  user          User      @relation("UserToGigTypes", fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, gigType])
 }
 
 model UserCategory {
