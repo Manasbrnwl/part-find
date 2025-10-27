@@ -19,6 +19,9 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
     content,
     requirement,
     total,
+    girls = 0,
+    boys = 0,
+    lunch,
     startDate,
     endDate,
     location,
@@ -41,6 +44,12 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
   if (!startDate || !endDate) {
     throw handleValidationError("Start date and end date are required");
   }
+  if (girls > 0 || boys > 0) {
+    if (parseInt(girls) + parseInt(boys) != total)
+      throw handleValidationError(
+        "Sum of total boys and total girls should be equal to the vacancy"
+      );
+  }
 
   const post = await prisma.post.create({
     data: {
@@ -57,6 +66,9 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
       payment: payment || "No payment",
       paymentDate: new Date(paymentDate),
       company_name,
+      girls,
+      boys,
+      lunch,
     },
   });
 
@@ -91,6 +103,10 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
     designation,
     payment,
     paymentDate,
+    company_name,
+    girls,
+    boys,
+    lunch,
   } = req.body;
 
   if (!id) {
@@ -109,6 +125,13 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
     throw handleForbiddenError("You don't have permission to update this post");
   }
 
+  if (girls > 0 || boys > 0) {
+    if (parseInt(girls) + parseInt(boys) != total)
+      throw handleValidationError(
+        "Sum of total boys and total girls should be equal to the vacancy"
+      );
+  }
+
   const updatedPost = await prisma.post.update({
     where: { id },
     data: {
@@ -123,6 +146,10 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
       responsibility: responsibility || post.responsibility,
       role: designation || post.role,
       payment: Number(payment) || post.payment,
+      company_name,
+      girls,
+      boys,
+      lunch,
     },
   });
 
@@ -191,6 +218,9 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
         paymentDate: true,
         responsibility: true,
         company_name: true,
+        girls: true,
+        boys: true,
+        lunch: true,
         is_active: true,
         startDate: true,
         endDate: true,
@@ -679,6 +709,9 @@ export const getSavePosts = asyncHandler(
             paymentDate: true,
             responsibility: true,
             company_name: true,
+            girls: true,
+            boys: true,
+            lunch: true,
             is_active: true,
             startDate: true,
             endDate: true,
