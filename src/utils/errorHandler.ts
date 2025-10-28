@@ -27,6 +27,11 @@ export class AppError extends Error {
  * Handle Prisma-specific errors and convert them to user-friendly messages
  */
 export const handlePrismaError = (error: any): AppError => {
+  // If it's already an AppError, return as is
+  if (error instanceof AppError) {
+    return error;
+  }
+
   // Handle mock Prisma errors (for testing) or actual Prisma errors
   if (error instanceof Prisma.PrismaClientKnownRequestError || (error.code && typeof error.code === 'string')) {
     switch (error.code) {
@@ -143,11 +148,6 @@ export const handlePrismaError = (error: any): AppError => {
       400,
       'VALIDATION_ERROR'
     );
-  }
-
-  // If it's already an AppError, return as is
-  if (error instanceof AppError) {
-    return error;
   }
 
   // For any other error, return a generic server error

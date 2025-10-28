@@ -349,6 +349,30 @@ export const updateRecruiterProfile = asyncHandler(
       logoFilename = files.companyLogo[0].filename;
     }
 
+    // Check if email is being changed to a different email
+    if (email !== user.email) {
+      // Verify new email is not already taken by another user
+      const existingUser = await prisma.user.findUnique({
+        where: { email: email },
+      });
+
+      if (existingUser && existingUser.id !== userId) {
+        throw handleValidationError("This email is already in use by another account");
+      }
+    }
+
+    // Check if phone number is being changed to a different number
+    if (mobileNumber !== user.phone_number) {
+      // Verify new phone number is not already taken by another user
+      const existingUserWithPhone = await prisma.user.findUnique({
+        where: { phone_number: mobileNumber },
+      });
+
+      if (existingUserWithPhone && existingUserWithPhone.id !== userId) {
+        throw handleValidationError("This phone number is already in use by another account");
+      }
+    }
+
     // Update user with recruiter details
     const updatedUser = await prisma.user.update({
       where: { id: userId },
