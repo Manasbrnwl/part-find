@@ -234,6 +234,13 @@ export const loginGoogleUser = asyncHandler(
       const decodedToken = await admin.auth().verifyIdToken(idToken);
       const { user_id, email, name } = decodedToken;
 
+      if (!email) {
+        return res.status(400).json({
+          success: false,
+          message: "Google account does not have an associated email",
+        });
+      }
+
       let user = await prisma.user.findUnique({
         where: {
           email,
