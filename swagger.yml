@@ -1,0 +1,811 @@
+openapi: 3.0.3
+info:
+  title: Part-Find API
+  description: Job platform API for connecting users with gig work opportunities
+  version: 1.0.0
+  contact:
+    email: support@partfind.com
+
+servers:
+  - url: http://localhost:4000
+    description: Development server
+
+tags:
+  - name: Auth
+    description: Authentication endpoints
+  - name: Users
+    description: User profile management
+  - name: Posts
+    description: Job post management
+  - name: Ratings
+    description: User rating system
+  - name: Notifications
+    description: Push notification management (FCM)
+  - name: Master
+    description: Master data endpoints
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        phone_number:
+          type: string
+        role:
+          type: string
+          enum: [USER, ADMIN, RECRUITER]
+        is_active:
+          type: boolean
+
+    Post:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        content:
+          type: string
+        location:
+          type: string
+        latitude:
+          type: number
+          format: float
+        longitude:
+          type: number
+          format: float
+        payment:
+          type: number
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        total:
+          type: integer
+        boys:
+          type: integer
+        girls:
+          type: integer
+        lunch:
+          type: boolean
+
+    Rating:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        postId:
+          type: string
+        recruiterId:
+          type: string
+        userId:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: object
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          default: false
+        message:
+          type: string
+        error:
+          type: string
+
+security:
+  - bearerAuth: []
+
+paths:
+  # Auth Routes
+  /auth/request-otp:
+    post:
+      tags: [Auth]
+      summary: Request OTP for login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: OTP sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /auth/verify-otp:
+    post:
+      tags: [Auth]
+      summary: Verify OTP and login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, otp]
+              properties:
+                userId:
+                  type: string
+                  description: User ID returned from request-otp
+                otp:
+                  type: string
+                  description: OTP received via email/SMS
+                fcmToken:
+                  type: string
+                  description: Firebase Cloud Messaging token for push notifications (optional)
+      responses:
+        '200':
+          description: Login successful with JWT token
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          accessToken:
+                            type: string
+                          refreshToken:
+                            type: string
+                          isNewUser:
+                            type: boolean
+                          user:
+                            $ref: '#/components/schemas/User'
+
+  /auth/firebase-signin:
+    post:
+      tags: [Auth]
+      summary: Sign in with Firebase/Google
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken, fcmToken]
+              properties:
+                idToken:
+                  type: string
+                  description: Firebase ID token from Google Sign-In
+                fcmToken:
+                  type: string
+                  description: Firebase Cloud Messaging token for push notifications
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout user
+      responses:
+        '200':
+          description: Logged out successfully
+
+  /auth/delete-profile:
+    delete:
+      tags: [Auth]
+      summary: Delete user account
+      responses:
+        '200':
+          description: Account deleted
+
+  # User Routes
+  /users/profile:
+    get:
+      tags: [Users]
+      summary: Get current user profile
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+    put:
+      tags: [Users]
+      summary: Update user profile
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                phone_number:
+                  type: string
+                date_of_birth:
+                  type: string
+                  format: date
+                gender:
+                  type: string
+                address:
+                  type: string
+                state:
+                  type: string
+                country:
+                  type: string
+                profile_image:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '200':
+          description: Profile updated
+
+  /users/recruiter-profile:
+    get:
+      tags: [Users]
+      summary: Get recruiter profile
+      responses:
+        '200':
+          description: Recruiter profile
+    put:
+      tags: [Users]
+      summary: Update recruiter profile
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                company_name:
+                  type: string
+                recruiter_type:
+                  type: string
+                company_registration:
+                  type: string
+                company_address:
+                  type: string
+                companyLogo:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Recruiter profile updated
+
+  /users:
+    get:
+      tags: [Users]
+      summary: Get all users (Admin only)
+      responses:
+        '200':
+          description: List of users
+
+  /users/fcm-token:
+    put:
+      tags: [Users]
+      summary: Update FCM token for push notifications
+      description: Update the user's Firebase Cloud Messaging token. Call this on app startup or when the FCM token refreshes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fcmToken]
+              properties:
+                fcmToken:
+                  type: string
+                  description: Firebase Cloud Messaging registration token
+      responses:
+        '200':
+          description: FCM token updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: FCM token is required
+        '401':
+          description: Unauthorized
+
+  # Post Routes
+  /post:
+    post:
+      tags: [Posts]
+      summary: Create a new job post (Recruiter only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, content, startDate, endDate]
+              properties:
+                title:
+                  type: string
+                content:
+                  type: string
+                requirement:
+                  type: string
+                total:
+                  type: integer
+                boys:
+                  type: integer
+                girls:
+                  type: integer
+                lunch:
+                  type: boolean
+                startDate:
+                  type: string
+                  format: date-time
+                endDate:
+                  type: string
+                  format: date-time
+                location:
+                  type: string
+                latitude:
+                  type: number
+                longitude:
+                  type: number
+                payment:
+                  type: number
+                paymentDate:
+                  type: string
+                  format: date-time
+                company_name:
+                  type: string
+                categories:
+                  type: string
+                  description: Comma-separated category IDs
+      responses:
+        '201':
+          description: Post created
+
+  /post/update/{id}:
+    put:
+      tags: [Posts]
+      summary: Update a job post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Post'
+      responses:
+        '200':
+          description: Post updated
+
+  /post/delete/{id}:
+    delete:
+      tags: [Posts]
+      summary: Delete a job post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Post deleted
+
+  /post/get-all:
+    get:
+      tags: [Posts]
+      summary: Get all active posts (User)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: List of posts
+
+  /post/nearby:
+    get:
+      tags: [Posts]
+      summary: Get nearby posts based on location
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+          description: User latitude
+        - name: long
+          in: query
+          required: true
+          schema:
+            type: number
+          description: User longitude
+        - name: radius
+          in: query
+          schema:
+            type: number
+            default: 10
+          description: Search radius in kilometers
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of nearby posts with distance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      posts:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/Post'
+                            - type: object
+                              properties:
+                                distance:
+                                  type: number
+                                  description: Distance in km
+                      totalPages:
+                        type: integer
+                      currentPage:
+                        type: integer
+                      searchRadius:
+                        type: number
+
+  /post/{id}:
+    get:
+      tags: [Posts]
+      summary: Get post by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Post details
+
+  /post/apply/{id}:
+    post:
+      tags: [Posts]
+      summary: Apply to a job post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  description: Application message
+      responses:
+        '201':
+          description: Application submitted
+
+  /post/applied/get-all:
+    get:
+      tags: [Posts]
+      summary: Get all posts user has applied to
+      responses:
+        '200':
+          description: List of applied posts
+
+  /post/get-all-post:
+    get:
+      tags: [Posts]
+      summary: Get all posts by recruiter (Recruiter only)
+      responses:
+        '200':
+          description: List of recruiter's posts
+
+  /post/list/{id}:
+    post:
+      tags: [Posts]
+      summary: Get applicants for a post (Recruiter only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of applicants
+
+  /post/update-status/{id}:
+    put:
+      tags: [Posts]
+      summary: Update applicant status (Recruiter only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Application ID
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [PENDING, APPROVED, REJECTED]
+      responses:
+        '200':
+          description: Status updated
+
+  /post/save/{postId}:
+    post:
+      tags: [Posts]
+      summary: Save/unsave a post
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Post saved/unsaved
+
+  /post/save/get-all:
+    get:
+      tags: [Posts]
+      summary: Get all saved posts
+      responses:
+        '200':
+          description: List of saved posts
+
+  # Rating Routes
+  /rating/{postId}/{userId}:
+    post:
+      tags: [Ratings]
+      summary: Rate a user after job completion (Recruiter only)
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              properties:
+                rating:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                comment:
+                  type: string
+      responses:
+        '201':
+          description: Rating submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /rating/user/{userId}:
+    get:
+      tags: [Ratings]
+      summary: Get all ratings for a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: User ratings with pagination
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      ratings:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Rating'
+                      totalPages:
+                        type: integer
+                      currentPage:
+                        type: integer
+                      totalRatings:
+                        type: integer
+
+  /rating/average/{userId}:
+    get:
+      tags: [Ratings]
+      summary: Get average rating for a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Average rating
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      averageRating:
+                        type: number
+                      totalRatings:
+                        type: integer
+
+  /rating/job/{postId}:
+    get:
+      tags: [Ratings]
+      summary: Get all ratings for a job (Recruiter only)
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job ratings
+
+  # Notification Routes
+  /notifications/test:
+    post:
+      tags: [Notifications]
+      summary: Send a test push notification
+      description: Sends a test FCM push notification to the authenticated user. Useful for verifying that FCM is properly configured and the user's token is valid.
+      responses:
+        '200':
+          description: Test notification sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: No FCM token found for user
+        '401':
+          description: Unauthorized
+        '500':
+          description: Failed to send notification (invalid/expired token)
+
+  # Master Routes
+  /master/categories:
+    get:
+      tags: [Master]
+      summary: Get all job categories
+      security: []
+      responses:
+        '200':
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        description:
+                          type: string

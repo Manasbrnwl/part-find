@@ -4,6 +4,13 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import {
+  generateAccessToken,
+  createAndSaveRefreshToken,
+  validateRefreshToken,
+  revokeRefreshToken,
+  revokeAllUserTokens,
+} from "../utils/tokenUtils";
+import {
   calculateOTPExpiry,
   generateOTP,
   isOTPExpired,
@@ -130,7 +137,7 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
  * @param res Response object
  */
 export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
-  const { userId, otp, name, password } = req.body;
+  const { userId, otp, name, password, fcmToken } = req.body;
 
   if (!userId || !otp) {
     throw handleValidationError("User ID and OTP are required");
@@ -162,16 +169,15 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
   // Determine if this is a new user (no password set)
   const isNewUser = !user.name;
 
-  // Generate JWT token
-  const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, {
-    expiresIn: "24h",
-  });
+  // Generate tokens
+  const accessToken = generateAccessToken(user.id, user.email);
+  const refreshToken = await createAndSaveRefreshToken(user.id);
 
   // Update user data
   const updateData: any = {
-    jwt_token: token,
     otp: null, // Clear OTP after successful verification
     otp_exp: null,
+    ...(fcmToken && { fcm_token: fcmToken }),
   };
 
   // Update user
@@ -202,7 +208,8 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
     message: isNewUser ? "Signup successful" : "Login successful",
     data: {
       user: userWithoutSensitiveData,
-      token,
+      accessToken,
+      refreshToken,
       isNewUser,
     },
   });
@@ -241,19 +248,16 @@ export const loginGoogleUser = asyncHandler(
           },
         });
       }
-      const token = jwt.sign(
-        { userId: user.id, email: user.email },
-        JWT_SECRET,
-        {
-          expiresIn: "24h",
-        }
-      );
+      // Generate tokens
+      const accessToken = generateAccessToken(user.id, user.email);
+      const refreshToken = await createAndSaveRefreshToken(user.id);
+
+      // Update FCM token
       user = await prisma.user.update({
         where: {
           id: user.id,
         },
         data: {
-          jwt_token: token,
           fcm_token: fcmToken,
         },
       });
@@ -265,7 +269,8 @@ export const loginGoogleUser = asyncHandler(
           email: user.email,
           phone: user.phone_number || "",
           role: user.role,
-          token,
+          accessToken,
+          refreshToken,
         },
       });
     } catch (error: any) {
@@ -280,32 +285,27 @@ export const loginGoogleUser = asyncHandler(
 );
 
 /**
- * Logout user - clear jwt_token and fcm_token
+ * Logout user - revoke refresh token and clear fcm_token
  * @param req Request object with userId from auth middleware
  * @param res Response object
  */
 export const logout = asyncHandler(async (req: Request, res: Response) => {
-  // @ts-ignore - userId will be added by auth middleware
   const userId = req.userId;
+  const { refreshToken } = req.body;
 
   if (!userId) {
-    throw new Error("User ID is required");
+    throw handleValidationError("User ID is required");
   }
 
-  // Find user
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-  });
-
-  if (!user) {
-    throw handleNotFoundError("User");
+  // Revoke the refresh token if provided
+  if (refreshToken) {
+    await revokeRefreshToken(refreshToken);
   }
 
-  // Clear JWT token and FCM token
+  // Clear FCM token
   await prisma.user.update({
     where: { id: userId },
     data: {
-      jwt_token: null,
       fcm_token: null,
     },
   });
@@ -314,6 +314,75 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
     success: true,
     message: "Logout successful",
     data: {},
+  });
+});
+
+/**
+ * Refresh tokens - generate new access and refresh tokens
+ * @param req Request object with refreshToken in body
+ * @param res Response object
+ */
+export const refreshTokens = asyncHandler(async (req: Request, res: Response) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    throw handleValidationError("Refresh token is required");
+  }
+
+  // Validate the refresh token
+  const result = await validateRefreshToken(refreshToken);
+
+  if (!result.valid || !result.user) {
+    return res.status(401).json({
+      success: false,
+      message: result.error || "Invalid refresh token",
+    });
+  }
+
+  // Revoke the old refresh token (rotation)
+  await revokeRefreshToken(refreshToken);
+
+  // Generate new tokens
+  const newAccessToken = generateAccessToken(result.user.id, result.user.email);
+  const newRefreshToken = await createAndSaveRefreshToken(result.user.id);
+
+  res.status(200).json({
+    success: true,
+    message: "Tokens refreshed successfully",
+    data: {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+    },
+  });
+});
+
+/**
+ * Logout from all devices - revoke all refresh tokens
+ * @param req Request object with userId from auth middleware
+ * @param res Response object
+ */
+export const logoutAll = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  if (!userId) {
+    throw handleValidationError("User ID is required");
+  }
+
+  // Revoke all refresh tokens for this user
+  const revokedCount = await revokeAllUserTokens(userId);
+
+  // Clear FCM token
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      fcm_token: null,
+    },
+  });
+
+  res.status(200).json({
+    success: true,
+    message: `Logged out from all devices. ${revokedCount} session(s) revoked.`,
+    data: { revokedSessions: revokedCount },
   });
 });
 
@@ -353,7 +422,7 @@ export const deleteProfile = asyncHandler(
       select: { id: true },
     });
 
-    const postIds = userPosts.map((post) => post.id);
+    const postIds = userPosts.map((post: { id: string }) => post.id);
 
     // Delete applications for user's posts
     if (postIds.length > 0) {

@@ -7,6 +7,12 @@ import authRoutes from "./routes/authRoutes";
 import userRoutes from "./routes/userRoutes";
 import postRoutes from "./routes/postRoutes";
 import masterRoutes from "./routes/masterRoutes";
+import ratingRoutes from "./routes/ratingRoutes";
+import notificationRoutes from "./routes/notificationRoutes";
+import { startNotificationWorker } from "./queues/notificationWorker";
+import swaggerUi from 'swagger-ui-express';
+import YAML from 'yamljs';
+
 
 dotenv.config();
 
@@ -19,6 +25,9 @@ app.use(express.json());
 app.use(cors());
 app.use(morgan("dev"));
 
+const swaggerDoc = YAML.load('./swagger.yml');
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
+
 // Routes
 app.get("/", (_req, res) => {
   res.send("Hello, TypeScript with Node.js!");
@@ -30,8 +39,12 @@ app.use("/auth", authRoutes);
 app.use("/users", userRoutes);
 // Post routes
 app.use("/post", postRoutes);
-//master routes
+// Master routes
 app.use("/master", masterRoutes);
+// Rating routes
+app.use("/rating", ratingRoutes);
+// Notification routes
+app.use("/notifications", notificationRoutes);
 
 // Legacy route - consider migrating this to proper controller pattern
 app.use("/seed", require("./routes/user"));
@@ -49,6 +62,13 @@ app.use((err: any, _req: any, res: any, _next: any) => {
   console.error(err.stack);
   res.status(500).send("Something broke!");
 });
+
+// Start notification worker
+try {
+  startNotificationWorker();
+} catch (err) {
+  console.error("Failed to start notification worker:", err);
+}
 
 // Start server
 app.listen(PORT, () => {

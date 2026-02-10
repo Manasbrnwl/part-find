@@ -6,7 +6,8 @@ import {
   getProfile,
   updateProfile,
   getRecruiterProfile,
-  updateRecruiterProfile
+  updateRecruiterProfile,
+  updateFcmToken,
 } from "../controller/userController";
 import multer from "multer";
 import mime from "mime-types";
@@ -57,5 +58,8 @@ router
 
 // Get all users (admin only)
 router.get("/", authorize(["ADMIN"]), getAllUsers);
+
+// FCM token management
+router.put("/fcm-token", updateFcmToken);
 
 export default router;

@@ -44,6 +44,9 @@ model User {
   UserCategory        UserCategory[]
   recruiterIndustries RecruiterIndustry[] @relation("UserToIndustries")
   recruiterGigTypes   RecruiterGigType[]  @relation("UserToGigTypes")
+  ratingsReceived     Rating[]            @relation("UserRatings")
+  ratingsGiven        Rating[]            @relation("RecruiterRatings")
+  refreshTokens       RefreshToken[]
 }
 
 model RecruiterIndustry {
@@ -111,10 +114,13 @@ model Post {
   startDate      DateTime       @default(now())
   is_active      Boolean        @default(true)
   company_name   String?
+  latitude       Float?
+  longitude      Float?
   user           User           @relation(fields: [userId], references: [id])
   PostCategory   PostCategory[]
   comments       postApplied[]
   savePosts      savePosts[]
+  ratings        Rating[]
 
   @@unique([userId, title, startDate], map: "post_unique")
 }
@@ -181,4 +187,37 @@ enum Status {
   PENDING
   APPROVED
   REJECTED
+}
+
+model Rating {
+  id          String   @id @default(uuid())
+  postId      String
+  recruiterId String // The recruiter giving the rating
+  userId      String // The user being rated
+  rating      Int // 1-5 stars
+  comment     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  post      Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  recruiter User @relation("RecruiterRatings", fields: [recruiterId], references: [id], onDelete: Cascade)
+  user      User @relation("UserRatings", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId], map: "rating_post_user_unique") // One rating per user per job
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  token      String   @unique
+  userId     String
+  deviceInfo String?
+  expiresAt  DateTime
+  isRevoked  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
 }

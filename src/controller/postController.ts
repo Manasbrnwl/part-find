@@ -9,6 +9,7 @@ import {
   handleValidationError,
   asyncHandler,
 } from "../utils/errorHandler";
+import { scheduleJobReminder } from "../queues/notificationQueue";
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -31,6 +32,8 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
     paymentDate,
     company_name,
     categories,
+    latitude,
+    longitude,
   } = req.body;
   const userId = req.userId;
 
@@ -69,6 +72,8 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
       girls,
       boys,
       lunch,
+      latitude: latitude ? parseFloat(latitude) : null,
+      longitude: longitude ? parseFloat(longitude) : null,
     },
   });
 
@@ -90,7 +95,7 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const updatePost = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const {
     title,
     content,
@@ -107,6 +112,8 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
     girls,
     boys,
     lunch,
+    latitude,
+    longitude,
   } = req.body;
 
   if (!id) {
@@ -150,6 +157,8 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
       girls,
       boys,
       lunch,
+      latitude: latitude !== undefined ? parseFloat(latitude) : post.latitude,
+      longitude: longitude !== undefined ? parseFloat(longitude) : post.longitude,
     },
   });
 
@@ -161,7 +170,7 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const deletePost = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   if (!id) {
     throw handleValidationError("Post ID is required");
@@ -282,7 +291,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const getPostById = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   if (!id) {
     throw handleValidationError("Post ID is required");
@@ -308,7 +317,7 @@ export const getPostById = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const userId = req.userId;
 
   if (!id) {
@@ -350,6 +359,12 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
     throw handleValidationError("You have already applied to this post");
   }
 
+  // Get user's FCM token for scheduling notification
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { fcm_token: true },
+  });
+
   const application = await prisma.postApplied.create({
     data: {
       userId,
@@ -357,6 +372,18 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
       content: req.body.content || "",
     },
   });
+
+  // Schedule job reminder notification for 1 day before start
+  if (user?.fcm_token) {
+    await scheduleJobReminder({
+      userId,
+      postId: id,
+      postTitle: post.title,
+      startDate: post.startDate,
+      location: post.location || "TBD",
+      fcmToken: user.fcm_token,
+    });
+  }
 
   res.status(201).json({
     success: true,
@@ -427,7 +454,7 @@ export const getAppliedPosts = asyncHandler(
 );
 
 export const listPosts = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   if (!id) {
     throw handleValidationError("Post ID is required");
@@ -524,7 +551,7 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
 
 export const updateUserStatus = asyncHandler(
   async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { status } = req.body;
 
     if (!id) {
@@ -538,7 +565,14 @@ export const updateUserStatus = asyncHandler(
     // Verify the application exists and belongs to a post owned by the current user
     const application = await prisma.postApplied.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        content: true,
+        createdAt: true,
+        updatedAt: true,
+        userId: true,
+        postId: true,
+        status: true,
         post: {
           select: {
             userId: true,
@@ -633,7 +667,7 @@ export const recruiterGetPost = asyncHandler(
 );
 
 export const savePost = asyncHandler(async (req: Request, res: Response) => {
-  const { postId } = req.params;
+  const postId = req.params.postId as string;
 
   if (!postId) {
     throw handleValidationError("Post ID is required");
@@ -750,6 +784,137 @@ export const getSavePosts = asyncHandler(
       success: true,
       message: "Saved posts retrieved successfully",
       data: savedPosts,
+    });
+  }
+);
+
+/**
+ * Get nearby posts based on user's location
+ * Uses Haversine formula to calculate distance
+ */
+export const getNearbyPosts = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { lat, long, radius = 10, limit = 20, page = 1 } = req.query;
+
+    if (!lat || !long) {
+      throw handleValidationError("Latitude and longitude are required");
+    }
+
+    const userLat = parseFloat(lat as string);
+    const userLong = parseFloat(long as string);
+    const radiusKm = parseFloat(radius as string) || 10;
+    const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
+    const pageSize = Math.max(parseInt(limit as string, 10) || 20, 1);
+
+    // Get all active posts with coordinates
+    const allPosts = await prisma.post.findMany({
+      where: {
+        endDate: { gt: new Date() },
+        is_active: true,
+        latitude: { not: null },
+        longitude: { not: null },
+      },
+      select: {
+        id: true,
+        userId: true,
+        title: true,
+        role: true,
+        content: true,
+        requirement: true,
+        total: true,
+        location: true,
+        payment: true,
+        paymentDate: true,
+        responsibility: true,
+        company_name: true,
+        girls: true,
+        boys: true,
+        lunch: true,
+        is_active: true,
+        startDate: true,
+        endDate: true,
+        latitude: true,
+        longitude: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: {
+          select: { comments: true },
+        },
+        comments: {
+          select: {
+            id: true,
+            status: true,
+          },
+          where: {
+            userId: req.userId,
+          },
+        },
+        savePosts: {
+          select: {
+            id: true,
+          },
+          where: {
+            userId: req.userId,
+          },
+        },
+      },
+    });
+
+    // Calculate distance using Haversine formula
+    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+      const R = 6371; // Earth's radius in km
+      const dLat = (lat2 - lat1) * (Math.PI / 180);
+      const dLon = (lon2 - lon1) * (Math.PI / 180);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * (Math.PI / 180)) *
+        Math.cos(lat2 * (Math.PI / 180)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    };
+
+    // Filter posts by distance and add distance field
+    const nearbyPosts = allPosts
+      .map((post) => {
+        const distance = calculateDistance(
+          userLat,
+          userLong,
+          post.latitude!,
+          post.longitude!
+        );
+        return { ...post, distance: Math.round(distance * 10) / 10 }; // Round to 1 decimal
+      })
+      .filter((post) => post.distance <= radiusKm)
+      .sort((a, b) => a.distance - b.distance);
+
+    // Paginate results
+    const total = nearbyPosts.length;
+    const skip = (pageNumber - 1) * pageSize;
+    const paginatedPosts = nearbyPosts.slice(skip, skip + pageSize);
+
+    // Format response
+    const postsWithFlags = paginatedPosts.map(
+      ({ comments, _count, savePosts, ...rest }) => ({
+        ...rest,
+        appliedFlag: comments.length > 0 ? 1 : 0,
+        appliedStatus: comments?.[0]?.status || "Not Applied",
+        appliedApplicants: _count.comments,
+        savedFlag: savePosts.length > 0 ? 1 : 0,
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Nearby posts retrieved successfully",
+      data: {
+        posts: postsWithFlags,
+        totalPages: Math.ceil(total / pageSize),
+        currentPage: pageNumber,
+        totalPosts: total,
+        searchRadius: radiusKm,
+      },
     });
   }
 );

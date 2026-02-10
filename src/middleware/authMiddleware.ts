@@ -27,28 +27,40 @@ export const authenticate = async (
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Authentication required" });
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+        code: "AUTH_REQUIRED"
+      });
     }
 
     const token = authHeader.split(" ")[1];
 
     if (!token) {
-      return res.status(401).json({ message: "Authentication required" });
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+        code: "AUTH_REQUIRED"
+      });
     }
 
     // Verify token
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
 
-    // Find user with this token
+    // Find user (stateless - no token check in DB)
     const user = await prisma.user.findUnique({
       where: {
         id: decoded.userId,
-        jwt_token: token
+        is_active: true
       }
     });
 
     if (!user) {
-      return res.status(401).json({ message: "Invalid or expired token" });
+      return res.status(401).json({
+        success: false,
+        message: "User not found or inactive",
+        code: "USER_INVALID"
+      });
     }
 
     // Add userId to request object
@@ -56,6 +68,23 @@ export const authenticate = async (
 
     next();
   } catch (error: any) {
+    // Handle JWT specific errors
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        message: "Access token expired",
+        code: "TOKEN_EXPIRED"
+      });
+    }
+
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token",
+        code: "TOKEN_INVALID"
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Server error",

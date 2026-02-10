@@ -11,7 +11,8 @@ import {
   updateUserStatus,
   recruiterGetPost,
   savePost,
-  getSavePosts
+  getSavePosts,
+  getNearbyPosts
 } from "../controller/postController";
 import { authenticate, authorize } from "../middleware/authMiddleware";
 
@@ -26,12 +27,12 @@ router.get("/applied/get-all", authorize(["USER"]), getAppliedPosts);
 router.post("/apply/:id", authorize(["USER"]), applyToPost);
 router.post("/list/:id", authorize(["ADMIN", "RECRUITER"]), listPosts);
 router.put("/update-status/:id", authorize(["RECRUITER"]), updateUserStatus);
-router.get("/get-all-post", authorize(["RECRUITER"]), recruiterGetPost)
+router.get("/get-all-post", authorize(["RECRUITER"]), recruiterGetPost);
+router.get("/nearby", authorize(["USER"]), getNearbyPosts);
 router.get("/get-all", authorize(["USER"]), getAllPosts);
 router.get("/:id", authorize(["USER"]), getPostById);
 router.post("/save/:postId", authorize(["USER"]), savePost);
 router.get("/save/get-all", authorize(["USER"]), getSavePosts);
 
-
-
 export default router;
+

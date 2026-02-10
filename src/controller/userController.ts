@@ -482,3 +482,40 @@ export const updateRecruiterProfile = asyncHandler(
     });
   }
 );
+
+/**
+ * Update FCM token for push notifications
+ * Called when the client's FCM token refreshes or on app startup
+ */
+export const updateFcmToken = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId;
+  const { fcmToken } = req.body;
+
+  if (!userId) {
+    throw handleAuthorizationError("User ID is required");
+  }
+
+  if (!fcmToken) {
+    throw handleValidationError("FCM token is required");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw handleNotFoundError("User");
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { fcm_token: fcmToken },
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "FCM token updated successfully",
+  });
+});
+
+
