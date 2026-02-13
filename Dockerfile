@@ -39,7 +39,7 @@ COPY prisma ./prisma
 RUN npx prisma generate
 
 # Push migrations
-RUN npx prisma db push
+# RUN npx prisma db push
 
 # Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
