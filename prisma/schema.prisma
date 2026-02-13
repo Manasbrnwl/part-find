@@ -116,6 +116,7 @@ model Post {
   company_name   String?
   latitude       Float?
   longitude      Float?
+  category       String?
   user           User           @relation(fields: [userId], references: [id])
   PostCategory   PostCategory[]
   comments       postApplied[]

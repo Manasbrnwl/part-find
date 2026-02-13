@@ -85,6 +85,9 @@ components:
           type: integer
         lunch:
           type: boolean
+        category:
+          type: string
+          description: General category for the job post (e.g., Hospitality, Retail)
 
     Rating:
       type: object

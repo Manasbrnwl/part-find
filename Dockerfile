@@ -38,6 +38,9 @@ COPY prisma ./prisma
 # Generate Prisma client in production
 RUN npx prisma generate
 
+# Push migrations
+RUN npx prisma db push
+
 # Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
 

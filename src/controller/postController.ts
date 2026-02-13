@@ -32,6 +32,7 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
     paymentDate,
     company_name,
     categories,
+    category,
     latitude,
     longitude,
   } = req.body;
@@ -69,6 +70,7 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
       payment: payment || "No payment",
       paymentDate: new Date(paymentDate),
       company_name,
+      category,
       girls,
       boys,
       lunch,
@@ -112,6 +114,7 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
     girls,
     boys,
     lunch,
+    category,
     latitude,
     longitude,
   } = req.body;
@@ -154,6 +157,7 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
       role: designation || post.role,
       payment: Number(payment) || post.payment,
       company_name,
+      category: category || post.category,
       girls,
       boys,
       lunch,
@@ -233,6 +237,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
         is_active: true,
         startDate: true,
         endDate: true,
+        category: true,
         createdAt: true,
         updatedAt: true,
         _count: {
@@ -413,6 +418,7 @@ export const getAppliedPosts = asyncHandler(
               location: true,
               role: true,
               endDate: true,
+              category: true,
             },
           },
           status: true,
@@ -749,6 +755,7 @@ export const getSavePosts = asyncHandler(
             is_active: true,
             startDate: true,
             endDate: true,
+            category: true,
             createdAt: true,
             updatedAt: true,
             _count: {
@@ -833,6 +840,7 @@ export const getNearbyPosts = asyncHandler(
         is_active: true,
         startDate: true,
         endDate: true,
+        category: true,
         latitude: true,
         longitude: true,
         createdAt: true,
