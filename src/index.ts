@@ -12,6 +12,7 @@ import notificationRoutes from "./routes/notificationRoutes";
 import { startNotificationWorker } from "./queues/notificationWorker";
 import swaggerUi from 'swagger-ui-express';
 import YAML from 'yamljs';
+import path from 'path';
 
 
 dotenv.config();
@@ -25,8 +26,13 @@ app.use(express.json());
 app.use(cors());
 app.use(morgan("dev"));
 
-const swaggerDoc = YAML.load('./swagger.yml');
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
+try {
+  const swaggerPath = path.join(process.cwd(), 'swagger.yml');
+  const swaggerDoc = YAML.load(swaggerPath);
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
+} catch (error) {
+  console.error("Failed to load swagger documentation:", error);
+}
 
 // Routes
 app.get("/", (_req, res) => {

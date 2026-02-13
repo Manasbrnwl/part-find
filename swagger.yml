@@ -486,6 +486,9 @@ paths:
                 categories:
                   type: string
                   description: Comma-separated category IDs
+                category:
+                  type: string
+                  description: General category for the job post (e.g., Hospitality, Retail)
       responses:
         '201':
           description: Post created
