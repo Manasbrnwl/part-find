@@ -1,82 +1,44 @@
-import { PrismaClient } from "@prisma/client";
-import express from "express";
-import dotenv from "dotenv";
-import cors from "cors";
-import morgan from "morgan";
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { logger } from "hono/logger";
+import { prettyJSON } from "hono/pretty-json";
+
+// Import routes
 import authRoutes from "./routes/authRoutes";
 import userRoutes from "./routes/userRoutes";
 import postRoutes from "./routes/postRoutes";
 import masterRoutes from "./routes/masterRoutes";
 import ratingRoutes from "./routes/ratingRoutes";
 import notificationRoutes from "./routes/notificationRoutes";
-import { startNotificationWorker } from "./queues/notificationWorker";
-import swaggerUi from 'swagger-ui-express';
-import YAML from 'yamljs';
 
-
-dotenv.config();
-
-const app = express();
-const prisma = new PrismaClient();
-const PORT = process.env.PORT || 3000;
+const app = new Hono();
 
 // Middleware
-app.use(express.json());
-app.use(cors());
-app.use(morgan("dev"));
-
-const swaggerDoc = YAML.load('./swagger.yml');
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
+app.use("*", cors());
+app.use("*", logger());
+app.use("*", prettyJSON());
 
 // Routes
-app.get("/", (_req, res) => {
-  res.send("Hello, TypeScript with Node.js!");
+app.get("/", (c) => {
+  return c.text("Hello, TypeScript with Hono on Cloudflare Workers!");
 });
 
-// Auth routes
-app.use("/auth", authRoutes);
-// User routes
-app.use("/users", userRoutes);
-// Post routes
-app.use("/post", postRoutes);
-// Master routes
-app.use("/master", masterRoutes);
-// Rating routes
-app.use("/rating", ratingRoutes);
-// Notification routes
-app.use("/notifications", notificationRoutes);
+// Mount routes
+app.route("/auth", authRoutes);
+app.route("/users", userRoutes);
+app.route("/post", postRoutes);
+app.route("/master", masterRoutes);
+app.route("/rating", ratingRoutes);
+app.route("/notifications", notificationRoutes);
 
-// Legacy route - consider migrating this to proper controller pattern
-app.use("/seed", require("./routes/user"));
-
-// Fetch image from profile folder
-app.use("/images", express.static("uploads/profile"));
-
-// Handle 404
-app.use((_req, res) => {
-  res.status(404).json({ message: "Not Found" });
+// Error handling is built-in but can be customized
+app.onError((err, c) => {
+  console.error(err);
+  return c.text('Internal Server Error', 500);
 });
 
-// Error handling middleware
-app.use((err: any, _req: any, res: any, _next: any) => {
-  console.error(err.stack);
-  res.status(500).send("Something broke!");
+app.notFound((c) => {
+  return c.text('Not Found', 404);
 });
 
-// Start notification worker
-try {
-  startNotificationWorker();
-} catch (err) {
-  console.error("Failed to start notification worker:", err);
-}
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server is running on PORT ${PORT}`);
-});
-
-// Handle graceful shutdown
-process.on("SIGINT", async () => {
-  await prisma.$disconnect();
-  process.exit(0);
-});
+export default app;

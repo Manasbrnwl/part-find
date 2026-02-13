@@ -1,7 +1,7 @@
-import express from "express";
+import { Hono } from "hono";
 import { categoryLists } from "../controller/masterController";
 
-const router = express.Router();
+const router = new Hono();
 
 router.get("/category", categoryLists);
 

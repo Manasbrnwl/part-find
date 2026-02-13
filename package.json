@@ -1,11 +1,14 @@
 {
   "name": "part_find_ts",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "src/index.ts",
   "scripts": {
-    "dev": "nodemon src/index.ts",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "wrangler dev",
+    "db:push": "prisma db push",
+    "db:generate": "prisma generate"
   },
   "prisma": {
     "seed": "ts-node src/seed/seed.ts"
@@ -16,38 +19,25 @@
   "description": "",
   "dependencies": {
     "@prisma/client": "^6.12.0",
-    "bcrypt": "^6.0.0",
-    "bullmq": "^5.67.3",
-    "cors": "^2.8.5",
+    "@prisma/adapter-pg": "^6.12.0",
+    "bcryptjs": "^2.4.3",
+    "hono": "^4.0.0",
     "dotenv": "^17.2.0",
-    "express": "^5.1.0",
-    "express-rate-limit": "^8.0.1",
     "firebase": "^12.9.0",
     "firebase-admin": "^13.4.0",
-    "ioredis": "^5.9.2",
     "jsonwebtoken": "^9.0.2",
-    "morgan": "^1.10.1",
-    "multer": "^2.0.2",
-    "node-schedule": "^2.1.1",
-    "nodemailer": "^7.0.5",
-    "prisma": "^6.12.0",
+    "pg": "^8.11.3",
     "slugify": "^1.6.6",
-    "swagger-ui-express": "^5.0.1",
-    "yamljs": "^0.3.0"
+    "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@types/bcrypt": "^6.0.0",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.3",
-    "@types/mime-types": "^3.0.1",
-    "@types/morgan": "^1.9.10",
-    "@types/multer": "^2.0.0",
-    "@types/node": "^24.0.15",
-    "@types/nodemailer": "^6.4.17",
-    "@types/swagger-ui-express": "^4.1.8",
-    "@types/yamljs": "^0.2.34",
-    "nodemon": "^3.1.10",
+    "@cloudflare/workers-types": "^4.20240208.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.11.17",
+    "@types/pg": "^8.11.0",
+    "prisma": "^6.12.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.3.3",
+    "wrangler": "^3.28.0"
   }
 }

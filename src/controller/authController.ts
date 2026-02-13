@@ -1,8 +1,5 @@
-import { PrismaClient } from "@prisma/client";
-import { Request, Response } from "express";
-import bcrypt from "bcrypt";
+import { Context } from "hono";
 import jwt from "jsonwebtoken";
-import dotenv from "dotenv";
 import {
   generateAccessToken,
   createAndSaveRefreshToken,
@@ -19,72 +16,29 @@ import {
   handleControllerError,
   handleNotFoundError,
   handleValidationError,
-  asyncHandler,
 } from "../utils/errorHandler";
 import { getFirebaseAdmin } from "../../utils/firebase";
-const {
-  sendEmailNotification,
-} = require("../../utils/notification/email.notification");
-
-dotenv.config();
-
-const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
+// @ts-ignore
+import { sendEmailNotification } from "../../utils/notification/email.notification";
+import { getPrisma } from "../lib/prisma";
 
 /**
  * Request OTP for login or signup
- * @param req Request object with email or phone_number
- * @param res Response object
  */
-export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
-  const { email, phone_number, role } = req.body;
+export const requestOTP = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const { email, phone_number, role } = await c.req.json();
 
-  if (!email && !phone_number) {
-    throw handleValidationError("Email or phone number is required");
-  }
+    if (!email && !phone_number) {
+      throw handleValidationError("Email or phone number is required");
+    }
 
-  const identifier = email || phone_number;
-  const isEmail = !!email;
+    const identifier = email || phone_number;
+    const isEmail = !!email;
 
-  // Check if user exists
-  let user = await prisma.user.findFirst({
-    select: {
-      id: true,
-      name: true,
-      userImages: {
-        select: {
-          image: true,
-        },
-      },
-    },
-    where: {
-      is_active: true,
-      email: isEmail ? identifier : undefined,
-      phone_number: !isEmail ? identifier : undefined,
-    },
-  });
-
-  // Generate OTP
-  const otp = generateOTP();
-  const otpExpiry = calculateOTPExpiry();
-
-  if (user) {
-    // Existing user - update with new OTP
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { otp, otp_exp: otpExpiry },
-    });
-  } else {
-    // New user - create temporary user record
-    const newUser = await prisma.user.create({
-      data: {
-        email: isEmail ? identifier : undefined,
-        phone_number: !isEmail ? identifier : undefined,
-        otp,
-        otp_exp: otpExpiry,
-        is_active: true, // Ensure user is active
-        role,
-      },
+    // Check if user exists
+    let user = await prisma.user.findFirst({
       select: {
         id: true,
         name: true,
@@ -94,315 +48,362 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
           },
         },
       },
+      where: {
+        is_active: true,
+        email: isEmail ? identifier : undefined,
+        phone_number: !isEmail ? identifier : undefined,
+      },
     });
 
-    user = newUser;
-  }
+    // Generate OTP
+    const otp = generateOTP();
+    const otpExpiry = calculateOTPExpiry();
 
-  // Send OTP via email or SMS
-  let sent = false;
-  if (isEmail) {
-    // Send email with OTP
-    await sendEmailNotification(
-      identifier,
-      "Part Find - Authentication OTP",
-      `Your OTP for authentication is: ${otp}. It will expire in 3 minutes.`,
-      `<h1>Authentication OTP</h1><p>Your OTP for authentication is: <strong>${otp}</strong></p><p>It will expire in 3 minutes.</p>`
-    );
-    sent = true;
-  } else {
-    // For SMS implementation (placeholder)
-    // Implement SMS sending logic here
-    sent = true;
-  }
+    if (user) {
+      // Existing user - update with new OTP
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { otp, otp_exp: otpExpiry },
+      });
+    } else {
+      // New user - create temporary user record
+      const newUser = await prisma.user.create({
+        data: {
+          email: isEmail ? identifier : undefined,
+          phone_number: !isEmail ? identifier : undefined,
+          otp,
+          otp_exp: otpExpiry,
+          is_active: true, // Ensure user is active
+          role,
+        },
+        select: {
+          id: true,
+          name: true,
+          userImages: {
+            select: {
+              image: true,
+            },
+          },
+        },
+      });
 
-  if (!sent) {
-    throw new Error(`Failed to send OTP to ${isEmail ? "email" : "phone"}`);
-  }
+      user = newUser;
+    }
 
-  res.status(200).json({
-    success: true,
-    message: `OTP sent to ${isEmail ? email : phone_number}`,
-    data: {
-      userId: user?.id,
-      profile: user?.userImages,
-      isNewUser: !user?.name, // If name is not set, it's likely a new user
-    },
-  });
-});
+    // Send OTP via email or SMS
+    let sent = false;
+    if (isEmail) {
+      // Send email with OTP
+      await sendEmailNotification(
+        identifier,
+        "Part Find - Authentication OTP",
+        `Your OTP for authentication is: ${otp}. It will expire in 3 minutes.`,
+        `<h1>Authentication OTP</h1><p>Your OTP for authentication is: <strong>${otp}</strong></p><p>It will expire in 3 minutes.</p>`
+      );
+      sent = true;
+    } else {
+      // For SMS implementation (placeholder)
+      // Implement SMS sending logic here
+      sent = true;
+    }
+
+    if (!sent) {
+      throw new Error(`Failed to send OTP to ${isEmail ? "email" : "phone"}`);
+    }
+
+    return c.json({
+      success: true,
+      message: `OTP sent to ${isEmail ? email : phone_number}`,
+      data: {
+        userId: user?.id,
+        profile: user?.userImages,
+        isNewUser: !user?.name, // If name is not set, it's likely a new user
+      },
+    });
+  } catch (error) {
+    return handleControllerError(error, c);
+  }
+};
 
 /**
  * Verify OTP and complete signup/login
- * @param req Request object with userId, otp, and user details for new users
- * @param res Response object
  */
-export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
-  const { userId, otp, name, password, fcmToken } = req.body;
+export const verifyOTP = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const { userId, otp, name, password, fcmToken } = await c.req.json();
 
-  if (!userId || !otp) {
-    throw handleValidationError("User ID and OTP are required");
-  }
+    if (!userId || !otp) {
+      throw handleValidationError("User ID and OTP are required");
+    }
 
-  // Find user
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-  });
+    // Find user
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
 
-  if (!user) {
-    throw handleNotFoundError("User");
-  }
+    if (!user) {
+      throw handleNotFoundError("User");
+    }
 
-  // Check if OTP exists and is not expired
-  if (!user.otp || !user.otp_exp) {
-    throw handleValidationError("No OTP was generated for this user");
-  }
+    // Check if OTP exists and is not expired
+    if (!user.otp || !user.otp_exp) {
+      throw handleValidationError("No OTP was generated for this user");
+    }
 
-  if (isOTPExpired(user.otp_exp)) {
-    throw handleValidationError("OTP has expired");
-  }
+    if (isOTPExpired(user.otp_exp)) {
+      throw handleValidationError("OTP has expired");
+    }
 
-  // Verify OTP
-  if (user.otp !== otp.toString()) {
-    throw handleValidationError("Invalid OTP");
-  }
+    // Verify OTP
+    if (user.otp !== otp.toString()) {
+      throw handleValidationError("Invalid OTP");
+    }
 
-  // Determine if this is a new user (no password set)
-  const isNewUser = !user.name;
+    // Determine if this is a new user (no password set)
+    const isNewUser = !user.name;
 
-  // Generate tokens
-  const accessToken = generateAccessToken(user.id, user.email);
-  const refreshToken = await createAndSaveRefreshToken(user.id);
+    // Generate tokens
+    const accessToken = generateAccessToken(user.id, user.email, c.env?.JWT_SECRET);
+    const refreshToken = await createAndSaveRefreshToken(prisma, user.id);
 
-  // Update user data
-  const updateData: any = {
-    otp: null, // Clear OTP after successful verification
-    otp_exp: null,
-    ...(fcmToken && { fcm_token: fcmToken }),
-  };
+    // Update user data
+    const updateData: any = {
+      otp: null, // Clear OTP after successful verification
+      otp_exp: null,
+      ...(fcmToken && { fcm_token: fcmToken }),
+    };
 
-  // Update user
-  const updatedUser = await prisma.user.update({
-    include: {
-      userImages: {
-        select: {
-          image: true,
+    // Update user
+    const updatedUser = await prisma.user.update({
+      include: {
+        userImages: {
+          select: {
+            image: true,
+          },
         },
       },
-    },
-    where: { id: user.id },
-    data: updateData,
-  });
+      where: { id: user.id },
+      data: updateData,
+    });
 
-  // Return success response without sensitive data
-  const {
-    otp: __,
-    otp_exp: ___,
-    jwt_token,
-    createdAt,
-    updatedAt,
-    ...userWithoutSensitiveData
-  } = updatedUser;
+    // Return success response without sensitive data
+    const {
+      otp: __,
+      otp_exp: ___,
+      jwt_token,
+      createdAt,
+      updatedAt,
+      ...userWithoutSensitiveData
+    } = updatedUser;
 
-  res.status(200).json({
-    success: true,
-    message: isNewUser ? "Signup successful" : "Login successful",
-    data: {
-      user: userWithoutSensitiveData,
-      accessToken,
-      refreshToken,
-      isNewUser,
-    },
-  });
-});
+    return c.json({
+      success: true,
+      message: isNewUser ? "Signup successful" : "Login successful",
+      data: {
+        user: userWithoutSensitiveData,
+        accessToken,
+        refreshToken,
+        isNewUser,
+      },
+    });
+  } catch (error) {
+    return handleControllerError(error, c);
+  }
+};
 
 /**
  * Complete Third Party Login/Signup
- * @param req Request object with userId, otp, and user details for new users
- * @param res Response object
  */
-export const loginGoogleUser = asyncHandler(
-  async (req: Request, res: Response) => {
-    try {
-      const { fcmToken, idToken } = req.body;
-      if (!idToken || !fcmToken) {
-        return res.status(400).json({
-          success: false,
-          message: "Google ID token and FCM token are required",
-        });
-      }
-      const admin = getFirebaseAdmin();
-      const decodedToken = await admin.auth().verifyIdToken(idToken);
-      const { user_id, email, name } = decodedToken;
+export const loginGoogleUser = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const { fcmToken, idToken } = await c.req.json();
 
-      if (!email) {
-        return res.status(400).json({
-          success: false,
-          message: "Google account does not have an associated email",
-        });
-      }
+    if (!idToken || !fcmToken) {
+      return c.json({
+        success: false,
+        message: "Google ID token and FCM token are required",
+      }, 400);
+    }
 
-      let user = await prisma.user.findUnique({
-        where: {
+    // Note: clean this up for edge if firebase-admin is not edge compatible
+    const admin = getFirebaseAdmin();
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const { user_id, email, name } = decodedToken;
+
+    if (!email) {
+      return c.json({
+        success: false,
+        message: "Google account does not have an associated email",
+      }, 400);
+    }
+
+    let user = await prisma.user.findUnique({
+      where: {
+        email,
+      },
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          id: user_id,
+          name,
           email,
         },
       });
-      if (!user) {
-        user = await prisma.user.create({
-          data: {
-            id: user_id,
-            name,
-            email,
-          },
-        });
-      }
-      // Generate tokens
-      const accessToken = generateAccessToken(user.id, user.email);
-      const refreshToken = await createAndSaveRefreshToken(user.id);
-
-      // Update FCM token
-      user = await prisma.user.update({
-        where: {
-          id: user.id,
-        },
-        data: {
-          fcm_token: fcmToken,
-        },
-      });
-      res.json({
-        success: true,
-        data: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone_number || "",
-          role: user.role,
-          accessToken,
-          refreshToken,
-        },
-      });
-    } catch (error: any) {
-      res.status(500).json({
-        success: false,
-        message: "Server error",
-        error:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
-      });
     }
+
+    // Generate tokens
+    const accessToken = generateAccessToken(user.id, user.email, c.env?.JWT_SECRET);
+    const refreshToken = await createAndSaveRefreshToken(prisma, user.id);
+
+    // Update FCM token
+    user = await prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        fcm_token: fcmToken,
+      },
+    });
+
+    return c.json({
+      success: true,
+      data: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone_number || "",
+        role: user.role,
+        accessToken,
+        refreshToken,
+      },
+    });
+  } catch (error: any) {
+    return handleControllerError(error, c);
   }
-);
+};
 
 /**
  * Logout user - revoke refresh token and clear fcm_token
- * @param req Request object with userId from auth middleware
- * @param res Response object
  */
-export const logout = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.userId;
-  const { refreshToken } = req.body;
+export const logout = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const userId = c.get("userId");
+    const { refreshToken } = await c.req.json();
 
-  if (!userId) {
-    throw handleValidationError("User ID is required");
+    if (!userId) {
+      throw handleValidationError("User ID is required");
+    }
+
+    // Revoke the refresh token if provided
+    if (refreshToken) {
+      await revokeRefreshToken(prisma, refreshToken);
+    }
+
+    // Clear FCM token
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        fcm_token: null,
+      },
+    });
+
+    return c.json({
+      success: true,
+      message: "Logout successful",
+      data: {},
+    });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
-
-  // Revoke the refresh token if provided
-  if (refreshToken) {
-    await revokeRefreshToken(refreshToken);
-  }
-
-  // Clear FCM token
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      fcm_token: null,
-    },
-  });
-
-  res.status(200).json({
-    success: true,
-    message: "Logout successful",
-    data: {},
-  });
-});
+};
 
 /**
  * Refresh tokens - generate new access and refresh tokens
- * @param req Request object with refreshToken in body
- * @param res Response object
  */
-export const refreshTokens = asyncHandler(async (req: Request, res: Response) => {
-  const { refreshToken } = req.body;
+export const refreshTokens = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const { refreshToken } = await c.req.json();
 
-  if (!refreshToken) {
-    throw handleValidationError("Refresh token is required");
-  }
+    if (!refreshToken) {
+      throw handleValidationError("Refresh token is required");
+    }
 
-  // Validate the refresh token
-  const result = await validateRefreshToken(refreshToken);
+    // Validate the refresh token
+    const result = await validateRefreshToken(prisma, refreshToken);
 
-  if (!result.valid || !result.user) {
-    return res.status(401).json({
-      success: false,
-      message: result.error || "Invalid refresh token",
+    if (!result.valid || !result.user) {
+      return c.json({
+        success: false,
+        message: result.error || "Invalid refresh token",
+      }, 401);
+    }
+
+    // Revoke the old refresh token (rotation)
+    await revokeRefreshToken(prisma, refreshToken);
+
+    // Generate new tokens
+    const newAccessToken = generateAccessToken(result.user.id, result.user.email, c.env?.JWT_SECRET);
+    const newRefreshToken = await createAndSaveRefreshToken(prisma, result.user.id);
+
+    return c.json({
+      success: true,
+      message: "Tokens refreshed successfully",
+      data: {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      },
     });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
-
-  // Revoke the old refresh token (rotation)
-  await revokeRefreshToken(refreshToken);
-
-  // Generate new tokens
-  const newAccessToken = generateAccessToken(result.user.id, result.user.email);
-  const newRefreshToken = await createAndSaveRefreshToken(result.user.id);
-
-  res.status(200).json({
-    success: true,
-    message: "Tokens refreshed successfully",
-    data: {
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-    },
-  });
-});
+};
 
 /**
  * Logout from all devices - revoke all refresh tokens
- * @param req Request object with userId from auth middleware
- * @param res Response object
  */
-export const logoutAll = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.userId;
+export const logoutAll = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const userId = c.get("userId");
 
-  if (!userId) {
-    throw handleValidationError("User ID is required");
+    if (!userId) {
+      throw handleValidationError("User ID is required");
+    }
+
+    // Revoke all refresh tokens for this user
+    const revokedCount = await revokeAllUserTokens(prisma, userId);
+
+    // Clear FCM token
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        fcm_token: null,
+      },
+    });
+
+    return c.json({
+      success: true,
+      message: `Logged out from all devices. ${revokedCount} session(s) revoked.`,
+      data: { revokedSessions: revokedCount },
+    });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
-
-  // Revoke all refresh tokens for this user
-  const revokedCount = await revokeAllUserTokens(userId);
-
-  // Clear FCM token
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      fcm_token: null,
-    },
-  });
-
-  res.status(200).json({
-    success: true,
-    message: `Logged out from all devices. ${revokedCount} session(s) revoked.`,
-    data: { revokedSessions: revokedCount },
-  });
-});
+};
 
 /**
- * Delete user profile - soft delete by setting is_active to false
- * Also deletes related data: images, posts, applications, saved posts, industries, gig types
- * @param req Request object with userId from auth middleware
- * @param res Response object
+ * Delete user profile
  */
-export const deleteProfile = asyncHandler(
-  async (req: Request, res: Response) => {
-    // @ts-ignore - userId will be added by auth middleware
-    const userId = req.userId;
+export const deleteProfile = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const userId = c.get("userId");
 
     if (!userId) {
       throw new Error("User ID is required");
@@ -488,7 +489,7 @@ export const deleteProfile = asyncHandler(
       },
     });
 
-    res.status(200).json({
+    return c.json({
       success: true,
       message: "Profile deleted successfully",
       data: {
@@ -496,5 +497,7 @@ export const deleteProfile = asyncHandler(
         email: deletedUser.email,
       },
     });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
-);
+};

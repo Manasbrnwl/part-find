@@ -1,4 +1,4 @@
-import express from "express";
+import { Hono } from "hono";
 import {
   createPosts,
   updatePost,
@@ -16,9 +16,9 @@ import {
 } from "../controller/postController";
 import { authenticate, authorize } from "../middleware/authMiddleware";
 
-const router = express.Router();
+const router = new Hono();
 
-router.use(authenticate);
+router.use("*", authenticate);
 
 router.post("/", authorize(["ADMIN", "RECRUITER"]), createPosts);
 router.put("/update/:id", authorize(["ADMIN", "RECRUITER"]), updatePost);
@@ -35,4 +35,3 @@ router.post("/save/:postId", authorize(["USER"]), savePost);
 router.get("/save/get-all", authorize(["USER"]), getSavePosts);
 
 export default router;
-

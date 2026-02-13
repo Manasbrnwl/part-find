@@ -1,53 +1,31 @@
-import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
-import { PrismaClient } from "@prisma/client";
-import dotenv from "dotenv";
+import { Context, Next } from "hono";
+import { verify } from "jsonwebtoken";
+import { getPrisma } from "../lib/prisma";
 
-dotenv.config();
+const JWT_SECRET = "your-secret-key"; // Fallback, should come from env
 
-const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
-
-// Extend the Request interface to include userId
-declare global {
-  namespace Express {
-    interface Request {
-      userId?: string;
-    }
-  }
-}
-
-export const authenticate = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
+export const authenticate = async (c: Context, next: Next) => {
   try {
-    // Get token from Authorization header
-    const authHeader = req.headers.authorization;
+    const authHeader = c.req.header("Authorization");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({
+      return c.json({
         success: false,
         message: "Authentication required",
         code: "AUTH_REQUIRED"
-      });
+      }, 401);
     }
 
     const token = authHeader.split(" ")[1];
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required",
-        code: "AUTH_REQUIRED"
-      });
-    }
+    const secret = c.env?.JWT_SECRET || JWT_SECRET;
 
     // Verify token
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+    // @ts-ignore
+    const decoded = verify(token, secret) as { userId: string };
 
-    // Find user (stateless - no token check in DB)
+    const prisma = getPrisma(c.env);
+
+    // Find user
     const user = await prisma.user.findUnique({
       where: {
         id: decoded.userId,
@@ -56,79 +34,59 @@ export const authenticate = async (
     });
 
     if (!user) {
-      return res.status(401).json({
+      return c.json({
         success: false,
         message: "User not found or inactive",
         code: "USER_INVALID"
-      });
+      }, 401);
     }
 
-    // Add userId to request object
-    req.userId = user.id;
+    // Set userId in context
+    c.set("userId", user.id);
+    c.set("user", user);
 
-    next();
+    await next();
   } catch (error: any) {
-    // Handle JWT specific errors
     if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({
+      return c.json({
         success: false,
         message: "Access token expired",
         code: "TOKEN_EXPIRED"
-      });
+      }, 401);
     }
 
     if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({
+      return c.json({
         success: false,
         message: "Invalid token",
         code: "TOKEN_INVALID"
-      });
+      }, 401);
     }
 
-    res.status(500).json({
+    return c.json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
-    });
+      error: error.message
+    }, 500);
   }
 };
 
-// Optional: Role-based authorization middleware
 export const authorize = (allowedRoles: string[]) => {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const userId = req.userId;
+  return async (c: Context, next: Next) => {
+    const user: any = c.get("user");
 
-      if (!userId) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
-
-      const user = await prisma.user.findUnique({
-        where: { id: userId }
-      });
-
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      if (user.role === null) {
-        return res.status(403).json({ message: "Forbidden: Insufficient permissions" });
-      }
-
-      if (!allowedRoles.includes(user.role)) {
-        return res
-          .status(403)
-          .json({ message: "Forbidden: Insufficient permissions" });
-      }
-
-      next();
-    } catch (error: any) {
-      res.status(500).json({
-        success: false,
-        message: "Server error",
-        error:
-          process.env.NODE_ENV === "development" ? error.message : undefined
-      });
+    if (!user) {
+      return c.json({ message: "Unauthorized" }, 401);
     }
+
+    if (!user.role) {
+      return c.json({ message: "Forbidden: Insufficient permissions" }, 403);
+    }
+
+    if (!allowedRoles.includes(user.role)) {
+      return c.json({ message: "Forbidden: Insufficient permissions" }, 403);
+    }
+
+    await next();
   };
 };

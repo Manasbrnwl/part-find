@@ -1,4 +1,4 @@
-import express from "express";
+import { Hono } from "hono";
 import {
     createRating,
     getUserRatings,
@@ -7,9 +7,9 @@ import {
 } from "../controller/ratingController";
 import { authenticate, authorize } from "../middleware/authMiddleware";
 
-const router = express.Router();
+const router = new Hono();
 
-router.use(authenticate);
+router.use("*", authenticate);
 
 // Create rating (recruiters only)
 router.post("/:postId/:userId", authorize(["RECRUITER"]), createRating);

@@ -1,16 +1,12 @@
-import { PrismaClient } from "@prisma/client";
-import { Request, Response } from "express";
+import { Context } from "hono";
 import {
   handleControllerError,
-  handleNotFoundError,
-  handleValidationError,
-  asyncHandler,
 } from "../utils/errorHandler";
+import { getPrisma } from "../lib/prisma";
 
-const prisma = new PrismaClient();
-
-export const categoryLists = asyncHandler(
-  async (req: Request, res: Response) => {
+export const categoryLists = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
     const catergoryList = await prisma.jobCategory.findMany({
       select: {
         id: true,
@@ -18,6 +14,8 @@ export const categoryLists = asyncHandler(
         description: true,
       },
     });
-    res.status(201).json(catergoryList);
+    return c.json(catergoryList, 201);
+  } catch (error) {
+    return handleControllerError(error, c);
   }
-);
+};

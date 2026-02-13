@@ -1,80 +1,78 @@
-import { PrismaClient } from "@prisma/client";
-import { Request, Response } from "express";
-import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
-import dotenv from "dotenv";
+import { Context } from "hono";
 import {
   handleControllerError,
   handleNotFoundError,
   handleValidationError,
   handleAuthorizationError,
-  asyncHandler,
 } from "../utils/errorHandler";
-
-dotenv.config();
-
-const prisma = new PrismaClient();
+import { getPrisma } from "../lib/prisma";
+import { uploadFile } from "../utils/storage";
 
 // Get current user profile
-export const getProfile = asyncHandler(async (req: Request, res: Response) => {
-  // @ts-ignore - userId will be added by auth middleware
-  const userId = req.userId;
+export const getProfile = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const userId = c.get("userId");
 
-  if (!userId) {
-    throw handleAuthorizationError("User ID is required");
-  }
+    if (!userId) {
+      throw handleAuthorizationError("User ID is required");
+    }
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: {
-      userImages: {
-        select: {
-          id: true,
-          image: true,
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        userImages: {
+          select: {
+            id: true,
+            image: true,
+          },
         },
-      },
-      UserCategory: {
-        select: {
-          JobCategory: {
-            select: {
-              id: true,
-              name: true,
+        UserCategory: {
+          select: {
+            JobCategory: {
+              select: {
+                id: true,
+                name: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    });
 
-  if (!user) {
-    throw handleNotFoundError("User");
+    if (!user) {
+      throw handleNotFoundError("User");
+    }
+
+    // Return user data without password, createdAt, and updatedAt
+    const {
+      createdAt,
+      updatedAt,
+      jwt_token,
+      otp,
+      otp_exp,
+      fcm_token,
+      ...userWithoutPassword
+    } = user;
+
+    return c.json({
+      success: true,
+      message: "Profile fetched successfully",
+      data: {
+        user: userWithoutPassword,
+        // baseUrl: `${c.req.url.origin}/images/`, // Adjusted for Hono, but images are now S3/R2 keys
+        baseUrl: "https://your-r2-worker-url.com/images/", // Update this with actual URL
+      },
+    });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
+};
 
-  // Return user data without password, createdAt, and updatedAt
-  const {
-    createdAt,
-    updatedAt,
-    jwt_token,
-    otp,
-    otp_exp,
-    fcm_token,
-    ...userWithoutPassword
-  } = user;
-
-  res.status(200).json({
-    success: true,
-    message: "Profile fetched successfully",
-    data: {
-      user: userWithoutPassword,
-      baseUrl: `${req.protocol}://${req.hostname}/images/`,
-    },
-  });
-});
-
-export const updateProfile = asyncHandler(
-  async (req: Request, res: Response) => {
-    // @ts-ignore - userId will be added by auth middleware
-    const userId = req.userId;
+export const updateProfile = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const userId = c.get("userId");
 
     if (!userId) {
       throw handleAuthorizationError("User ID is required");
@@ -88,19 +86,20 @@ export const updateProfile = asyncHandler(
       throw handleNotFoundError("User");
     }
 
-    const {
-      name,
-      phone_number,
-      date_of_birth,
-      address,
-      height,
-      weight,
-      state,
-      gender,
-      english_level,
-      country,
-      imageId,
-    } = req.body;
+    // Parse body for multipart/form-data
+    const body = await c.req.parseBody();
+
+    const name = body['name'] as string;
+    const phone_number = body['phone_number'] as string;
+    const date_of_birth = body['date_of_birth'] as string;
+    const address = body['address'] as string;
+    const height = body['height'] as string;
+    const weight = body['weight'] as string;
+    const state = body['state'] as string;
+    const gender = body['gender'] as string;
+    const english_level = body['english_level'] as string;
+    const country = body['country'] as string;
+    const imageId = body['imageId'] as string;
 
     // Update user data
     const updatedUser = await prisma.user.update({
@@ -112,8 +111,8 @@ export const updateProfile = asyncHandler(
           ? new Date(date_of_birth)
           : user.date_of_birth,
         address: address || user.address,
-        height: parseFloat(height) || user.height,
-        weight: parseFloat(weight) || user.weight,
+        height: height ? parseFloat(height) : user.height,
+        weight: weight ? parseFloat(weight) : user.weight,
         state: state || user.state,
         gender: gender || user.gender,
         country: country || user.country,
@@ -131,20 +130,29 @@ export const updateProfile = asyncHandler(
       });
     }
 
-    const files = req.files as { profile_image?: Express.Multer.File[] };
-    const profile_image = files.profile_image;
+    // Handle File Upload
+    // Hono parseBody returns File | string | (File | string)[]
+    const profile_images = body['profile_image'];
 
-    if (profile_image) {
-      await prisma.images.createMany({
-        data: profile_image?.map((file: any) => ({
-          userId,
-          image: file.filename,
-        })),
-        skipDuplicates: true,
-      });
+    if (profile_images) {
+      const files = Array.isArray(profile_images) ? profile_images : [profile_images];
+      const validFiles = files.filter(f => f instanceof File) as File[];
+
+      if (validFiles.length > 0) {
+        const uploadPromises = validFiles.map(file => uploadFile(file, 'profile', c.env));
+        const uploadedFilenames = await Promise.all(uploadPromises);
+
+        await prisma.images.createMany({
+          data: uploadedFilenames.map((filename) => ({
+            userId,
+            image: filename,
+          })),
+          skipDuplicates: true,
+        });
+      }
     }
 
-    if (req.body.categories) {
+    if (body['categories']) {
       await prisma.userCategory.deleteMany({
         where: {
           user_id: userId,
@@ -152,8 +160,9 @@ export const updateProfile = asyncHandler(
       });
     }
 
-    if (req.body.categories) {
-      let categories = req.body.categories.split(",");
+    if (body['categories']) {
+      const categoriesStr = body['categories'] as string;
+      let categories = categoriesStr.split(",");
       await prisma.userCategory.createMany({
         data: categories?.map((id: string) => ({
           user_id: userId,
@@ -173,58 +182,68 @@ export const updateProfile = asyncHandler(
       ...userWithoutPassword
     } = updatedUser;
 
-    res.status(200).json({
+    return c.json({
       success: true,
       message: "Profile updated successfully",
       data: {
         user: userWithoutPassword,
       },
     });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
-);
+};
 
-export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
-  const users = await prisma.user.findMany({
-    where: {
-      is_active: true,
-    },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true,
-      phone_number: true,
-      address: true,
-      createdAt: true,
-      updatedAt: true,
-      userImages: {
-        select: {
-          id: true,
-          image: true,
+export const getAllUsers = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+
+    // Only admin can access - checked by route, but can double check
+    // Logic from original code
+
+    const users = await prisma.user.findMany({
+      where: {
+        is_active: true,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        phone_number: true,
+        address: true,
+        createdAt: true,
+        updatedAt: true,
+        userImages: {
+          select: {
+            id: true,
+            image: true,
+          },
         },
       },
-      // Exclude sensitive fields like password
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
-  res.status(200).json({
-    success: true,
-    message: "Users fetched successfully",
-    data: {
-      users,
-      baseUrl: `${req.protocol}://${req.host}/images/`,
-    },
-  });
-});
+    return c.json({
+      success: true,
+      message: "Users fetched successfully",
+      data: {
+        users,
+        baseUrl: "https://your-r2-worker-url.com/images/",
+      },
+    });
+  } catch (error) {
+    return handleControllerError(error, c);
+  }
+};
 
 // Get recruiter profile
-export const getRecruiterProfile = asyncHandler(
-  async (req: Request, res: Response) => {
-    // @ts-ignore - userId will be added by auth middleware
-    const userId = req.userId;
+export const getRecruiterProfile = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const userId = c.get("userId");
 
     if (!userId) {
       throw handleAuthorizationError("User ID is required");
@@ -259,7 +278,7 @@ export const getRecruiterProfile = asyncHandler(
       throw handleNotFoundError("Recruiter Profile");
     }
 
-    res.status(200).json({
+    return c.json({
       success: true,
       message: "Recruiter profile fetched successfully",
       data: {
@@ -278,17 +297,19 @@ export const getRecruiterProfile = asyncHandler(
           industries: user.recruiterIndustries,
           gigTypes: user.recruiterGigTypes,
         },
-        baseUrl: `${req.protocol}://${req.hostname}/images/`,
+        baseUrl: "https://your-r2-worker-url.com/images/",
       },
     });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
-);
+};
 
 // Update recruiter profile
-export const updateRecruiterProfile = asyncHandler(
-  async (req: Request, res: Response) => {
-    // @ts-ignore - userId will be added by auth middleware
-    const userId = req.userId;
+export const updateRecruiterProfile = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const userId = c.get("userId");
 
     if (!userId) {
       throw handleAuthorizationError("User ID is required");
@@ -309,17 +330,18 @@ export const updateRecruiterProfile = asyncHandler(
       );
     }
 
-    const {
-      fullName,
-      email,
-      mobileNumber,
-      companyName,
-      recruiterType,
-      companyRegistration,
-      companyAddress,
-      industries,
-      gigTypes,
-    } = req.body;
+    // Parse multipart/form-data
+    const body = await c.req.parseBody();
+
+    const fullName = body['fullName'] as string;
+    const email = body['email'] as string;
+    const mobileNumber = body['mobileNumber'] as string;
+    const companyName = body['companyName'] as string;
+    const recruiterType = body['recruiterType'] as string;
+    const companyRegistration = body['companyRegistration'] as string;
+    const companyAddress = body['companyAddress'] as string;
+    const industries = body['industries'] as string;
+    const gigTypes = body['gigTypes'] as string;
 
     // Validate required fields
     if (!fullName || !email || !mobileNumber) {
@@ -344,9 +366,9 @@ export const updateRecruiterProfile = asyncHandler(
 
     // Handle company logo upload if present
     let logoFilename = null;
-    const files = req.files as { companyLogo?: Express.Multer.File[] };
-    if (files && files.companyLogo && files.companyLogo.length > 0) {
-      logoFilename = files.companyLogo[0].filename;
+    const companyLogo = body['companyLogo'];
+    if (companyLogo && companyLogo instanceof File) {
+      logoFilename = await uploadFile(companyLogo, 'recruiter', c.env);
     }
 
     // Check if email is being changed to a different email
@@ -357,7 +379,10 @@ export const updateRecruiterProfile = asyncHandler(
       });
 
       if (existingUser && existingUser.id !== userId) {
-        throw handleValidationError("This email is already in use by another account");
+        return c.json({
+          success: false,
+          message: "This email is already in use by another account"
+        }, 400); // Manually returning json for validation error behavior
       }
     }
 
@@ -369,7 +394,10 @@ export const updateRecruiterProfile = asyncHandler(
       });
 
       if (existingUserWithPhone && existingUserWithPhone.id !== userId) {
-        throw handleValidationError("This phone number is already in use by another account");
+        return c.json({
+          success: false,
+          message: "This phone number is already in use by another account"
+        }, 400);
       }
     }
 
@@ -459,7 +487,7 @@ export const updateRecruiterProfile = asyncHandler(
       },
     });
 
-    res.status(200).json({
+    return c.json({
       success: true,
       message: "Recruiter profile updated successfully",
       data: {
@@ -480,42 +508,43 @@ export const updateRecruiterProfile = asyncHandler(
         },
       },
     });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
-);
+};
 
-/**
- * Update FCM token for push notifications
- * Called when the client's FCM token refreshes or on app startup
- */
-export const updateFcmToken = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.userId;
-  const { fcmToken } = req.body;
+export const updateFcmToken = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const userId = c.get("userId");
+    const { fcmToken } = await c.req.json();
 
-  if (!userId) {
-    throw handleAuthorizationError("User ID is required");
+    if (!userId) {
+      throw handleAuthorizationError("User ID is required");
+    }
+
+    if (!fcmToken) {
+      throw handleValidationError("FCM token is required");
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw handleNotFoundError("User");
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { fcm_token: fcmToken },
+    });
+
+    return c.json({
+      success: true,
+      message: "FCM token updated successfully",
+    });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
-
-  if (!fcmToken) {
-    throw handleValidationError("FCM token is required");
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-  });
-
-  if (!user) {
-    throw handleNotFoundError("User");
-  }
-
-  await prisma.user.update({
-    where: { id: userId },
-    data: { fcm_token: fcmToken },
-  });
-
-  res.status(200).json({
-    success: true,
-    message: "FCM token updated successfully",
-  });
-});
-
-
+};

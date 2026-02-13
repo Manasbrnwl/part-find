@@ -1,403 +1,438 @@
-import express from "express";
-import { PrismaClient, Status } from "@prisma/client";
-import { Request, Response } from "express";
-import { threadCpuUsage } from "node:process";
+import { Context } from "hono";
+import { Status } from "@prisma/client";
 import {
   handleControllerError,
   handleNotFoundError,
   handleForbiddenError,
   handleValidationError,
-  asyncHandler,
 } from "../utils/errorHandler";
 import { scheduleJobReminder } from "../queues/notificationQueue";
+import { getPrisma } from "../lib/prisma";
 
-const router = express.Router();
-const prisma = new PrismaClient();
+export const createPosts = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const userId = c.get("userId");
+    const body = await c.req.json();
 
-export const createPosts = asyncHandler(async (req: Request, res: Response) => {
-  const {
-    title,
-    content,
-    requirement,
-    total,
-    girls = 0,
-    boys = 0,
-    lunch,
-    startDate,
-    endDate,
-    location,
-    responsibility,
-    designation,
-    payment,
-    paymentDate,
-    company_name,
-    categories,
-    latitude,
-    longitude,
-  } = req.body;
-  const userId = req.userId;
+    const {
+      title,
+      content,
+      requirement,
+      total,
+      girls = 0,
+      boys = 0,
+      lunch,
+      startDate,
+      endDate,
+      location,
+      responsibility,
+      designation,
+      payment,
+      paymentDate,
+      company_name,
+      categories,
+      latitude,
+      longitude,
+    } = body;
 
-  // Validation
-  if (!userId) {
-    throw handleValidationError("User ID is required");
-  }
-  if (!title || !content) {
-    throw handleValidationError("Title and content are required");
-  }
-  if (!startDate || !endDate) {
-    throw handleValidationError("Start date and end date are required");
-  }
-  if (girls > 0 || boys > 0) {
-    if (parseInt(girls) + parseInt(boys) != total)
-      throw handleValidationError(
-        "Sum of total boys and total girls should be equal to the vacancy"
-      );
-  }
+    // Validation
+    if (!userId) {
+      throw handleValidationError("User ID is required");
+    }
+    if (!title || !content) {
+      throw handleValidationError("Title and content are required");
+    }
+    if (!startDate || !endDate) {
+      throw handleValidationError("Start date and end date are required");
+    }
+    if (girls > 0 || boys > 0) {
+      if (parseInt(girls) + parseInt(boys) != total)
+        throw handleValidationError(
+          "Sum of total boys and total girls should be equal to the vacancy"
+        );
+    }
 
-  const post = await prisma.post.create({
-    data: {
-      userId: userId,
-      title: title,
-      content: content,
-      role: designation || "No designation",
-      requirement: requirement || "No requirement",
-      total: Number(total) || 0,
-      endDate: new Date(endDate),
-      location: location || "No location",
-      responsibility: responsibility || "No responsibility",
-      startDate: new Date(startDate),
-      payment: payment || "No payment",
-      paymentDate: new Date(paymentDate),
+    const post = await prisma.post.create({
+      data: {
+        userId: userId,
+        title: title,
+        content: content,
+        role: designation || "No designation",
+        requirement: requirement || "No requirement",
+        total: Number(total) || 0,
+        endDate: new Date(endDate),
+        location: location || "No location",
+        responsibility: responsibility || "No responsibility",
+        startDate: new Date(startDate),
+        payment: payment || "No payment",
+        paymentDate: new Date(paymentDate),
+        company_name,
+        girls,
+        boys,
+        lunch,
+        latitude: latitude ? parseFloat(latitude) : null,
+        longitude: longitude ? parseFloat(longitude) : null,
+      },
+    });
+
+    if (categories) {
+      let categoriesList = categories.split(",");
+      await prisma.postCategory.createMany({
+        data: categoriesList?.map((id: string) => ({
+          post_id: post.id,
+          category_id: parseInt(id),
+        })),
+      });
+    }
+
+    return c.json({
+      success: true,
+      message: "Post created successfully",
+      data: post,
+    }, 201);
+  } catch (error) {
+    return handleControllerError(error, c);
+  }
+};
+
+export const updatePost = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const id = c.req.param("id");
+    const userId = c.get("userId");
+    const body = await c.req.json();
+
+    const {
+      title,
+      content,
+      requirement,
+      total,
+      endDate,
+      startDate,
+      location,
+      responsibility,
+      designation,
+      payment,
+      paymentDate,
       company_name,
       girls,
       boys,
       lunch,
-      latitude: latitude ? parseFloat(latitude) : null,
-      longitude: longitude ? parseFloat(longitude) : null,
-    },
-  });
+      latitude,
+      longitude,
+    } = body;
 
-  if (categories) {
-    let categoriesList = categories.split(",");
-    await prisma.postCategory.createMany({
-      data: categoriesList?.map((id: string) => ({
-        post_id: post.id,
-        category_id: parseInt(id),
-      })),
+    if (!id) {
+      throw handleValidationError("Post ID is required");
+    }
+
+    const post = await prisma.post.findUnique({
+      where: { id },
     });
-  }
 
-  res.status(201).json({
-    success: true,
-    message: "Post created successfully",
-    data: post,
-  });
-});
+    if (!post) {
+      throw handleNotFoundError("Post");
+    }
 
-export const updatePost = asyncHandler(async (req: Request, res: Response) => {
-  const id = req.params.id as string;
-  const {
-    title,
-    content,
-    requirement,
-    total,
-    endDate,
-    startDate,
-    location,
-    responsibility,
-    designation,
-    payment,
-    paymentDate,
-    company_name,
-    girls,
-    boys,
-    lunch,
-    latitude,
-    longitude,
-  } = req.body;
+    if (post.userId !== userId) {
+      throw handleForbiddenError("You don't have permission to update this post");
+    }
 
-  if (!id) {
-    throw handleValidationError("Post ID is required");
-  }
+    if (girls > 0 || boys > 0) {
+      if (parseInt(girls) + parseInt(boys) != total)
+        throw handleValidationError(
+          "Sum of total boys and total girls should be equal to the vacancy"
+        );
+    }
 
-  const post = await prisma.post.findUnique({
-    where: { id },
-  });
-
-  if (!post) {
-    throw handleNotFoundError("Post");
-  }
-
-  if (post.userId !== req.userId) {
-    throw handleForbiddenError("You don't have permission to update this post");
-  }
-
-  if (girls > 0 || boys > 0) {
-    if (parseInt(girls) + parseInt(boys) != total)
-      throw handleValidationError(
-        "Sum of total boys and total girls should be equal to the vacancy"
-      );
-  }
-
-  const updatedPost = await prisma.post.update({
-    where: { id },
-    data: {
-      title: title || post.title,
-      content: content || post.content,
-      requirement: requirement || post.requirement,
-      total: Number(total) || post.total,
-      endDate: endDate ? new Date(endDate) : post.endDate,
-      startDate: startDate ? new Date(startDate) : post.startDate,
-      paymentDate: paymentDate ? new Date(paymentDate) : post.paymentDate,
-      location: location || post.location,
-      responsibility: responsibility || post.responsibility,
-      role: designation || post.role,
-      payment: Number(payment) || post.payment,
-      company_name,
-      girls,
-      boys,
-      lunch,
-      latitude: latitude !== undefined ? parseFloat(latitude) : post.latitude,
-      longitude: longitude !== undefined ? parseFloat(longitude) : post.longitude,
-    },
-  });
-
-  res.status(200).json({
-    success: true,
-    message: "Post updated successfully",
-    data: updatedPost,
-  });
-});
-
-export const deletePost = asyncHandler(async (req: Request, res: Response) => {
-  const id = req.params.id as string;
-
-  if (!id) {
-    throw handleValidationError("Post ID is required");
-  }
-
-  const post = await prisma.post.findUnique({
-    where: { id },
-  });
-
-  if (!post) {
-    throw handleNotFoundError("Post");
-  }
-
-  if (post.userId !== req.userId) {
-    throw handleForbiddenError("You don't have permission to delete this post");
-  }
-
-  await prisma.post.update({
-    data: { is_active: false },
-    where: { id },
-  });
-
-  res.status(200).json({
-    success: true,
-    message: "Post deleted successfully",
-  });
-});
-
-export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
-  const location = req.query.location as string;
-  const { limit = 10, page = 1 } = req.query;
-
-  const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
-  const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
-  const skip = (pageNumber - 1) * pageSize;
-  const take = pageSize;
-
-  const [posts, total] = await Promise.all([
-    prisma.post.findMany({
-      where: {
-        endDate: { gt: new Date() },
-        is_active: true,
+    const updatedPost = await prisma.post.update({
+      where: { id },
+      data: {
+        title: title || post.title,
+        content: content || post.content,
+        requirement: requirement || post.requirement,
+        total: Number(total) || post.total,
+        endDate: endDate ? new Date(endDate) : post.endDate,
+        startDate: startDate ? new Date(startDate) : post.startDate,
+        paymentDate: paymentDate ? new Date(paymentDate) : post.paymentDate,
+        location: location || post.location,
+        responsibility: responsibility || post.responsibility,
+        role: designation || post.role,
+        payment: Number(payment) || post.payment,
+        company_name,
+        girls,
+        boys,
+        lunch,
+        latitude: latitude !== undefined ? parseFloat(latitude) : post.latitude,
+        longitude: longitude !== undefined ? parseFloat(longitude) : post.longitude,
       },
-      select: {
-        id: true,
-        userId: true,
-        title: true,
-        role: true,
-        content: true,
-        requirement: true,
-        total: true,
-        location: true,
-        payment: true,
-        paymentDate: true,
-        responsibility: true,
-        company_name: true,
-        girls: true,
-        boys: true,
-        lunch: true,
-        is_active: true,
-        startDate: true,
-        endDate: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: {
-          select: { comments: true },
-        },
-        comments: {
-          select: {
-            id: true,
-            status: true,
-          },
-          where: {
-            userId: req.userId,
-          },
-        },
-        savePosts: {
-          select: {
-            id: true,
-          },
-          where: {
-            userId: req.userId,
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      skip,
-      take,
-    }),
-    prisma.post.count({
-      where: {
-        endDate: { gt: new Date() },
-        is_active: true,
-      },
-    }),
-  ]);
-
-  const postsWithFlag = posts.map(
-    ({ comments, _count, savePosts, ...rest }) => ({
-      ...rest,
-      appliedFlag: comments.length > 0 ? 1 : 0,
-      appliedStatus: comments?.[0]?.status || "Not Applied",
-      appliedApplicants: _count.comments,
-      savedFlag: savePosts.length > 0 ? 1 : 0,
-    })
-  );
-
-  res.status(200).json({
-    success: true,
-    message: "Posts retrieved successfully",
-    data: {
-      posts: postsWithFlag,
-      totalPages: Math.ceil(total / pageSize),
-      currentPage: pageNumber,
-      totalPosts: total,
-    },
-  });
-});
-
-export const getPostById = asyncHandler(async (req: Request, res: Response) => {
-  const id = req.params.id as string;
-
-  if (!id) {
-    throw handleValidationError("Post ID is required");
-  }
-
-  const post = await prisma.post.findUnique({
-    where: {
-      id,
-      userId: req.userId,
-      is_active: true,
-    },
-  });
-
-  if (!post) {
-    throw handleNotFoundError("Post");
-  }
-
-  res.status(200).json({
-    success: true,
-    message: "Post retrieved successfully",
-    data: post,
-  });
-});
-
-export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
-  const id = req.params.id as string;
-  const userId = req.userId;
-
-  if (!id) {
-    throw handleValidationError("Post ID is required");
-  }
-
-  if (!userId) {
-    throw handleValidationError("User ID is required");
-  }
-
-  const post = await prisma.post.findUnique({
-    where: {
-      id,
-      is_active: true,
-    },
-  });
-
-  if (!post) {
-    throw handleNotFoundError("Post");
-  }
-
-  if (post.endDate <= new Date()) {
-    throw handleValidationError("Cannot apply to expired post");
-  }
-
-  if (post.userId === userId) {
-    throw handleValidationError("Cannot apply to your own post");
-  }
-
-  // Check if user already applied
-  const existingApplication = await prisma.postApplied.findFirst({
-    where: {
-      userId,
-      postId: id,
-    },
-  });
-
-  if (existingApplication) {
-    throw handleValidationError("You have already applied to this post");
-  }
-
-  // Get user's FCM token for scheduling notification
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { fcm_token: true },
-  });
-
-  const application = await prisma.postApplied.create({
-    data: {
-      userId,
-      postId: id,
-      content: req.body.content || "",
-    },
-  });
-
-  // Schedule job reminder notification for 1 day before start
-  if (user?.fcm_token) {
-    await scheduleJobReminder({
-      userId,
-      postId: id,
-      postTitle: post.title,
-      startDate: post.startDate,
-      location: post.location || "TBD",
-      fcmToken: user.fcm_token,
     });
+
+    return c.json({
+      success: true,
+      message: "Post updated successfully",
+      data: updatedPost,
+    });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
+};
 
-  res.status(201).json({
-    success: true,
-    message: "Successfully applied to post",
-    data: application,
-  });
-});
+export const deletePost = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const id = c.req.param("id");
+    const userId = c.get("userId");
 
-export const getAppliedPosts = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { limit = 10, page = 1 } = req.query;
+    if (!id) {
+      throw handleValidationError("Post ID is required");
+    }
 
-    const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
-    const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
+    const post = await prisma.post.findUnique({
+      where: { id },
+    });
+
+    if (!post) {
+      throw handleNotFoundError("Post");
+    }
+
+    if (post.userId !== userId) {
+      throw handleForbiddenError("You don't have permission to delete this post");
+    }
+
+    await prisma.post.update({
+      data: { is_active: false },
+      where: { id },
+    });
+
+    return c.json({
+      success: true,
+      message: "Post deleted successfully",
+    });
+  } catch (error) {
+    return handleControllerError(error, c);
+  }
+};
+
+export const getAllPosts = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const userId = c.get("userId");
+    const { limit = "10", page = "1" } = c.req.query();
+
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const pageSize = Math.max(parseInt(limit, 10) || 10, 1);
+    const skip = (pageNumber - 1) * pageSize;
+    const take = pageSize;
+
+    const [posts, total] = await Promise.all([
+      prisma.post.findMany({
+        where: {
+          endDate: { gt: new Date() },
+          is_active: true,
+        },
+        select: {
+          id: true,
+          userId: true,
+          title: true,
+          role: true,
+          content: true,
+          requirement: true,
+          total: true,
+          location: true,
+          payment: true,
+          paymentDate: true,
+          responsibility: true,
+          company_name: true,
+          girls: true,
+          boys: true,
+          lunch: true,
+          is_active: true,
+          startDate: true,
+          endDate: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: {
+            select: { comments: true },
+          },
+          comments: {
+            select: {
+              id: true,
+              status: true,
+            },
+            where: {
+              userId: userId,
+            },
+          },
+          savePosts: {
+            select: {
+              id: true,
+            },
+            where: {
+              userId: userId,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+      }),
+      prisma.post.count({
+        where: {
+          endDate: { gt: new Date() },
+          is_active: true,
+        },
+      }),
+    ]);
+
+    const postsWithFlag = posts.map(
+      ({ comments, _count, savePosts, ...rest }) => ({
+        ...rest,
+        appliedFlag: comments.length > 0 ? 1 : 0,
+        appliedStatus: comments?.[0]?.status || "Not Applied",
+        appliedApplicants: _count.comments,
+        savedFlag: savePosts.length > 0 ? 1 : 0,
+      })
+    );
+
+    return c.json({
+      success: true,
+      message: "Posts retrieved successfully",
+      data: {
+        posts: postsWithFlag,
+        totalPages: Math.ceil(total / pageSize),
+        currentPage: pageNumber,
+        totalPosts: total,
+      },
+    });
+  } catch (error) {
+    return handleControllerError(error, c);
+  }
+};
+
+export const getPostById = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const id = c.req.param("id");
+    const userId = c.get("userId");
+
+    if (!id) {
+      throw handleValidationError("Post ID is required");
+    }
+
+    const post = await prisma.post.findUnique({
+      where: {
+        id,
+        userId: userId,
+        is_active: true,
+      },
+    });
+
+    if (!post) {
+      throw handleNotFoundError("Post");
+    }
+
+    return c.json({
+      success: true,
+      message: "Post retrieved successfully",
+      data: post,
+    });
+  } catch (error) {
+    return handleControllerError(error, c);
+  }
+};
+
+export const applyToPost = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const id = c.req.param("id");
+    const userId = c.get("userId");
+    const body = await c.req.json();
+
+    if (!id) {
+      throw handleValidationError("Post ID is required");
+    }
+
+    if (!userId) {
+      throw handleValidationError("User ID is required");
+    }
+
+    const post = await prisma.post.findUnique({
+      where: {
+        id,
+        is_active: true,
+      },
+    });
+
+    if (!post) {
+      throw handleNotFoundError("Post");
+    }
+
+    if (post.endDate <= new Date()) {
+      throw handleValidationError("Cannot apply to expired post");
+    }
+
+    if (post.userId === userId) {
+      throw handleValidationError("Cannot apply to your own post");
+    }
+
+    // Check if user already applied
+    const existingApplication = await prisma.postApplied.findFirst({
+      where: {
+        userId,
+        postId: id,
+      },
+    });
+
+    if (existingApplication) {
+      throw handleValidationError("You have already applied to this post");
+    }
+
+    // Get user's FCM token for scheduling notification
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { fcm_token: true },
+    });
+
+    const application = await prisma.postApplied.create({
+      data: {
+        userId,
+        postId: id,
+        content: body.content || "",
+      },
+    });
+
+    // Schedule job reminder notification for 1 day before start
+    if (user?.fcm_token) {
+      await scheduleJobReminder({
+        userId,
+        postId: id,
+        postTitle: post.title,
+        startDate: post.startDate,
+        location: post.location || "TBD",
+        fcmToken: user.fcm_token,
+      });
+    }
+
+    return c.json({
+      success: true,
+      message: "Successfully applied to post",
+      data: application,
+    }, 201);
+  } catch (error) {
+    return handleControllerError(error, c);
+  }
+};
+
+export const getAppliedPosts = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const userId = c.get("userId");
+    const { limit = "10", page = "1" } = c.req.query();
+
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const pageSize = Math.max(parseInt(limit, 10) || 10, 1);
     const skip = (pageNumber - 1) * pageSize;
     const take = pageSize;
 
@@ -419,7 +454,7 @@ export const getAppliedPosts = asyncHandler(
           content: true,
         },
         where: {
-          userId: req.userId,
+          userId: userId,
         },
         orderBy: {
           post: {
@@ -431,12 +466,12 @@ export const getAppliedPosts = asyncHandler(
       }),
       prisma.postApplied.count({
         where: {
-          userId: req.userId,
+          userId: userId,
         },
       }),
     ]);
 
-    res.status(200).json({
+    return c.json({
       success: true,
       message: "Applied posts retrieved successfully",
       data: {
@@ -450,109 +485,119 @@ export const getAppliedPosts = asyncHandler(
         totalPosts: total,
       },
     });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
-);
+};
 
-export const listPosts = asyncHandler(async (req: Request, res: Response) => {
-  const id = req.params.id as string;
+export const listPosts = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const id = c.req.param("id");
+    const userId = c.get("userId");
 
-  if (!id) {
-    throw handleValidationError("Post ID is required");
-  }
+    if (!id) {
+      throw handleValidationError("Post ID is required");
+    }
 
-  const valid = await prisma.post.findFirst({
-    where: {
-      AND: [{ userId: req.userId }, { id: id }],
-    },
-  });
+    const valid = await prisma.post.findFirst({
+      where: {
+        AND: [{ userId: userId }, { id: id }],
+      },
+    });
 
-  if (!valid) {
-    throw handleForbiddenError(
-      "You don't have permission to view applications for this post"
-    );
-  }
+    if (!valid) {
+      throw handleForbiddenError(
+        "You don't have permission to view applications for this post"
+      );
+    }
 
-  const { filter, page = "1", limit = "10" } = req.query;
-  const statusFilter: Status =
-    typeof filter === "string" ? (filter as Status) : Status.PENDING;
+    const { filter, page = "1", limit = "10" } = c.req.query();
+    const statusFilter: Status =
+      typeof filter === "string" ? (filter as Status) : Status.PENDING;
 
-  // pagination numbers
-  const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
-  const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
-  const skip = (pageNumber - 1) * pageSize;
-  const take = pageSize;
+    // pagination numbers
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const pageSize = Math.max(parseInt(limit, 10) || 10, 1);
+    const skip = (pageNumber - 1) * pageSize;
+    const take = pageSize;
 
-  const [list, total] = await Promise.all([
-    prisma.postApplied.findMany({
-      select: {
-        id: true,
-        status: true,
-        content: true,
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            date_of_birth: true,
-            phone_number: true,
-            role: true,
-            height: true,
-            weight: true,
-            gender: true,
-            english_level: true,
-            address: true,
-            state: true,
-            country: true,
-            userImages: {
-              select: {
-                image: true,
+    const [list, total] = await Promise.all([
+      prisma.postApplied.findMany({
+        select: {
+          id: true,
+          status: true,
+          content: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              date_of_birth: true,
+              phone_number: true,
+              role: true,
+              height: true,
+              weight: true,
+              gender: true,
+              english_level: true,
+              address: true,
+              state: true,
+              country: true,
+              userImages: {
+                select: {
+                  image: true,
+                },
               },
             },
           },
         },
-      },
-      where: {
-        postId: id,
-        status: statusFilter,
-        user: {
-          is: {
-            is_active: true,
+        where: {
+          postId: id,
+          status: statusFilter,
+          user: {
+            is: {
+              is_active: true,
+            },
           },
         },
-      },
-      skip,
-      take,
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.postApplied.count({
-      where: {
-        postId: id,
-        status: statusFilter,
-        user: {
-          is: {
-            is_active: true,
+        skip,
+        take,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.postApplied.count({
+        where: {
+          postId: id,
+          status: statusFilter,
+          user: {
+            is: {
+              is_active: true,
+            },
           },
         },
+      }),
+    ]);
+
+    return c.json({
+      success: true,
+      message: "Post applications retrieved successfully",
+      data: {
+        list,
+        totalPages: Math.ceil(total / pageSize),
+        currentPage: pageNumber,
+        totalApplications: total,
       },
-    }),
-  ]);
+    });
+  } catch (error) {
+    return handleControllerError(error, c);
+  }
+};
 
-  res.status(200).json({
-    success: true,
-    message: "Post applications retrieved successfully",
-    data: {
-      list,
-      totalPages: Math.ceil(total / pageSize),
-      currentPage: pageNumber,
-      totalApplications: total,
-    },
-  });
-});
-
-export const updateUserStatus = asyncHandler(
-  async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    const { status } = req.body;
+export const updateUserStatus = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const id = c.req.param("id");
+    const userId = c.get("userId");
+    const { status } = await c.req.json();
 
     if (!id) {
       throw handleValidationError("Application ID is required");
@@ -585,7 +630,7 @@ export const updateUserStatus = asyncHandler(
       throw handleNotFoundError("Application");
     }
 
-    if (application.post.userId !== req.userId) {
+    if (application.post.userId !== userId) {
       throw handleForbiddenError(
         "You don't have permission to update this application status"
       );
@@ -596,17 +641,21 @@ export const updateUserStatus = asyncHandler(
       data: { status },
     });
 
-    res.status(200).json({
+    return c.json({
       success: true,
       message: "Application status updated successfully",
       data: updatedApplication,
     });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
-);
+};
 
-export const recruiterGetPost = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { filter } = req.query;
+export const recruiterGetPost = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const userId = c.get("userId");
+    const { filter } = c.req.query();
 
     const dateFilter =
       filter === "COMPLETED"
@@ -616,7 +665,7 @@ export const recruiterGetPost = asyncHandler(
     const [postCount, posts, postApplicationsCount] = await Promise.all([
       prisma.post.count({
         where: {
-          userId: req.userId,
+          userId: userId,
           is_active: true,
           endDate: dateFilter,
         },
@@ -628,7 +677,7 @@ export const recruiterGetPost = asyncHandler(
           },
         },
         where: {
-          userId: req.userId,
+          userId: userId,
           is_active: true,
           endDate: dateFilter,
         },
@@ -638,7 +687,7 @@ export const recruiterGetPost = asyncHandler(
         by: ["status"],
         where: {
           post: {
-            userId: req.userId,
+            userId: userId,
             is_active: true,
             endDate: dateFilter,
           },
@@ -654,7 +703,7 @@ export const recruiterGetPost = asyncHandler(
       appliedApplicants: _count.comments,
     }));
 
-    res.status(200).json({
+    return c.json({
       success: true,
       message: "Recruiter posts retrieved successfully",
       data: {
@@ -663,63 +712,74 @@ export const recruiterGetPost = asyncHandler(
         count: postCount,
       },
     });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
-);
+};
 
-export const savePost = asyncHandler(async (req: Request, res: Response) => {
-  const postId = req.params.postId as string;
+export const savePost = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const postId = c.req.param("postId");
+    const userId = c.get("userId");
 
-  if (!postId) {
-    throw handleValidationError("Post ID is required");
+    if (!postId) {
+      throw handleValidationError("Post ID is required");
+    }
+
+    if (!userId) {
+      throw handleValidationError("User ID is required");
+    }
+
+    // Check if post exists and is active
+    const postExists = await prisma.post.findUnique({
+      where: {
+        id: postId,
+        is_active: true,
+      },
+    });
+
+    if (!postExists) {
+      throw handleNotFoundError("Post");
+    }
+
+    // Check if post is already saved by this user
+    const existingSave = await prisma.savePosts.findFirst({
+      where: {
+        userId: userId,
+        postId: postId,
+      },
+    });
+
+    if (existingSave) {
+      throw handleValidationError("Post is already saved");
+    }
+
+    const savedPost = await prisma.savePosts.create({
+      data: {
+        userId: userId,
+        postId: postId,
+      },
+    });
+
+    return c.json({
+      success: true,
+      message: "Post saved successfully",
+      data: savedPost,
+    }, 201);
+  } catch (error) {
+    return handleControllerError(error, c);
   }
+};
 
-  if (!req.userId) {
-    throw handleValidationError("User ID is required");
-  }
+export const getSavePosts = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const userId = c.get("userId");
 
-  // Check if post exists and is active
-  const postExists = await prisma.post.findUnique({
-    where: {
-      id: postId,
-      is_active: true,
-    },
-  });
-
-  if (!postExists) {
-    throw handleNotFoundError("Post");
-  }
-
-  // Check if post is already saved by this user
-  const existingSave = await prisma.savePosts.findFirst({
-    where: {
-      userId: req.userId,
-      postId: postId,
-    },
-  });
-
-  if (existingSave) {
-    throw handleValidationError("Post is already saved");
-  }
-
-  const savedPost = await prisma.savePosts.create({
-    data: {
-      userId: req.userId,
-      postId: postId,
-    },
-  });
-
-  res.status(201).json({
-    success: true,
-    message: "Post saved successfully",
-    data: savedPost,
-  });
-});
-
-export const getSavePosts = asyncHandler(
-  async (req: Request, res: Response) => {
     const saved = await prisma.savePosts.findMany({
       where: {
-        userId: req.userId,
+        userId: userId,
         post: {
           is: {
             is_active: true,
@@ -760,7 +820,7 @@ export const getSavePosts = asyncHandler(
                 status: true,
               },
               where: {
-                userId: req.userId,
+                userId: userId,
               },
             },
           },
@@ -780,31 +840,31 @@ export const getSavePosts = asyncHandler(
       };
     });
 
-    res.status(200).json({
+    return c.json({
       success: true,
       message: "Saved posts retrieved successfully",
       data: savedPosts,
     });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
-);
+};
 
-/**
- * Get nearby posts based on user's location
- * Uses Haversine formula to calculate distance
- */
-export const getNearbyPosts = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { lat, long, radius = 10, limit = 20, page = 1 } = req.query;
+export const getNearbyPosts = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const userId = c.get("userId");
+    const { lat, long, radius = "10", limit = "20", page = "1" } = c.req.query();
 
     if (!lat || !long) {
       throw handleValidationError("Latitude and longitude are required");
     }
 
-    const userLat = parseFloat(lat as string);
-    const userLong = parseFloat(long as string);
-    const radiusKm = parseFloat(radius as string) || 10;
-    const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
-    const pageSize = Math.max(parseInt(limit as string, 10) || 20, 1);
+    const userLat = parseFloat(lat);
+    const userLong = parseFloat(long);
+    const radiusKm = parseFloat(radius) || 10;
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const pageSize = Math.max(parseInt(limit, 10) || 20, 1);
 
     // Get all active posts with coordinates
     const allPosts = await prisma.post.findMany({
@@ -846,7 +906,7 @@ export const getNearbyPosts = asyncHandler(
             status: true,
           },
           where: {
-            userId: req.userId,
+            userId: userId,
           },
         },
         savePosts: {
@@ -854,7 +914,7 @@ export const getNearbyPosts = asyncHandler(
             id: true,
           },
           where: {
-            userId: req.userId,
+            userId: userId,
           },
         },
       },
@@ -905,7 +965,7 @@ export const getNearbyPosts = asyncHandler(
       })
     );
 
-    res.status(200).json({
+    return c.json({
       success: true,
       message: "Nearby posts retrieved successfully",
       data: {
@@ -916,5 +976,7 @@ export const getNearbyPosts = asyncHandler(
         searchRadius: radiusKm,
       },
     });
+  } catch (error) {
+    return handleControllerError(error, c);
   }
-);
+};

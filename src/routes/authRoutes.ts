@@ -1,4 +1,4 @@
-import express from "express";
+import { Hono } from "hono";
 import {
   loginGoogleUser,
   requestOTP,
@@ -10,17 +10,17 @@ import {
 } from "../controller/authController";
 import { authenticate } from "../middleware/authMiddleware";
 
-const router = express.Router();
+const auth = new Hono();
 
 // Public auth routes
-router.post("/request-otp", requestOTP);
-router.post("/verify-otp", verifyOTP);
-router.post("/firebase-signin", loginGoogleUser);
-router.post("/refresh", refreshTokens);
+auth.post("/request-otp", requestOTP);
+auth.post("/verify-otp", verifyOTP);
+auth.post("/firebase-signin", loginGoogleUser);
+auth.post("/refresh", refreshTokens);
 
 // Protected auth routes
-router.post("/logout", authenticate, logout);
-router.post("/logout-all", authenticate, logoutAll);
-router.delete("/delete-profile", authenticate, deleteProfile);
+auth.post("/logout", authenticate, logout);
+auth.post("/logout-all", authenticate, logoutAll);
+auth.delete("/delete-profile", authenticate, deleteProfile);
 
-export default router;
+export default auth;

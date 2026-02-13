@@ -1,6 +1,3 @@
-import { Queue } from "bullmq";
-import { redisConnection } from "./config";
-
 // Notification types
 export enum NotificationType {
     JOB_REMINDER = "JOB_REMINDER",
@@ -25,20 +22,6 @@ export interface RatingNotificationData {
     fcmToken: string;
 }
 
-// Create notification queue
-export const notificationQueue = new Queue("notifications", {
-    connection: redisConnection,
-    defaultJobOptions: {
-        attempts: 3,
-        backoff: {
-            type: "exponential",
-            delay: 1000,
-        },
-        removeOnComplete: 100,
-        removeOnFail: 50,
-    },
-});
-
 /**
  * Schedule a job reminder notification for 1 day before the job starts
  */
@@ -52,18 +35,11 @@ export async function scheduleJobReminder(data: JobReminderData) {
 
     // Only schedule if reminder time is in the future
     if (delay > 0) {
-        await notificationQueue.add(
-            NotificationType.JOB_REMINDER,
-            data,
-            {
-                delay,
-                jobId: `reminder-${data.postId}-${data.userId}`,
-            }
-        );
-        console.log(`📅 Job reminder scheduled for ${reminderDate.toISOString()}`);
+        // TODO: Implement Cloudflare Queues or Scheduled Task
+        console.log(`[Worker Mock] 📅 Job reminder scheduled for ${reminderDate.toISOString()}`);
         return true;
     } else {
-        console.log(`⚠️ Job starts too soon, no reminder scheduled`);
+        console.log(`[Worker Mock] ⚠️ Job starts too soon, no reminder scheduled`);
         return false;
     }
 }
@@ -72,17 +48,6 @@ export async function scheduleJobReminder(data: JobReminderData) {
  * Queue an immediate rating notification
  */
 export async function queueRatingNotification(data: RatingNotificationData) {
-    await notificationQueue.add(
-        NotificationType.RATING_RECEIVED,
-        data,
-        {
-            jobId: `rating-${data.userId}-${Date.now()}`,
-        }
-    );
-    console.log(`⭐ Rating notification queued for user ${data.userId}`);
+    // TODO: Implement Cloudflare Queues or Scheduled Task
+    console.log(`[Worker Mock] ⭐ Rating notification queued for user ${data.userId}`);
 }
-
-// Log queue events
-notificationQueue.on("error", (err) => {
-    console.error("❌ Notification queue error:", err);
-});

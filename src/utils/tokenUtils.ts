@@ -1,13 +1,6 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
-import dotenv from "dotenv";
-
-dotenv.config();
-
-const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
-const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || "refresh-secret-key";
 
 // Token expiry configurations
 const ACCESS_TOKEN_EXPIRY = "15m"; // 15 minutes
@@ -16,8 +9,8 @@ const REFRESH_TOKEN_EXPIRY_DAYS = 7; // 7 days
 /**
  * Generate a JWT access token
  */
-export const generateAccessToken = (userId: string, email: string): string => {
-    return jwt.sign({ userId, email }, JWT_SECRET, {
+export const generateAccessToken = (userId: string, email: string, secret: string = "your-secret-key"): string => {
+    return jwt.sign({ userId, email }, secret, {
         expiresIn: ACCESS_TOKEN_EXPIRY,
     });
 };
@@ -42,6 +35,7 @@ export const getRefreshTokenExpiry = (): Date => {
  * Save refresh token to database
  */
 export const saveRefreshToken = async (
+    prisma: PrismaClient,
     userId: string,
     token: string,
     deviceInfo?: string
@@ -60,18 +54,19 @@ export const saveRefreshToken = async (
  * Create and save a new refresh token, returning the token string
  */
 export const createAndSaveRefreshToken = async (
+    prisma: PrismaClient,
     userId: string,
     deviceInfo?: string
 ): Promise<string> => {
     const token = generateRefreshToken();
-    await saveRefreshToken(userId, token, deviceInfo);
+    await saveRefreshToken(prisma, userId, token, deviceInfo);
     return token;
 };
 
 /**
  * Validate a refresh token and return the associated user
  */
-export const validateRefreshToken = async (token: string) => {
+export const validateRefreshToken = async (prisma: PrismaClient, token: string) => {
     const refreshToken = await prisma.refreshToken.findUnique({
         where: { token },
         include: {
@@ -107,7 +102,7 @@ export const validateRefreshToken = async (token: string) => {
 /**
  * Revoke a specific refresh token
  */
-export const revokeRefreshToken = async (token: string): Promise<boolean> => {
+export const revokeRefreshToken = async (prisma: PrismaClient, token: string): Promise<boolean> => {
     try {
         await prisma.refreshToken.update({
             where: { token },
@@ -122,7 +117,7 @@ export const revokeRefreshToken = async (token: string): Promise<boolean> => {
 /**
  * Revoke all refresh tokens for a user
  */
-export const revokeAllUserTokens = async (userId: string): Promise<number> => {
+export const revokeAllUserTokens = async (prisma: PrismaClient, userId: string): Promise<number> => {
     const result = await prisma.refreshToken.updateMany({
         where: {
             userId,
@@ -136,7 +131,7 @@ export const revokeAllUserTokens = async (userId: string): Promise<number> => {
 /**
  * Clean up expired tokens (can be run periodically)
  */
-export const cleanupExpiredTokens = async (): Promise<number> => {
+export const cleanupExpiredTokens = async (prisma: PrismaClient): Promise<number> => {
     const result = await prisma.refreshToken.deleteMany({
         where: {
             OR: [

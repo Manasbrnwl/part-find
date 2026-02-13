@@ -1,5 +1,6 @@
-import { Response } from 'express';
 import { Prisma } from '@prisma/client';
+import { Context } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 
 export interface ErrorResponse {
   success: false;
@@ -54,7 +55,6 @@ export const handlePrismaError = (error: any): AppError => {
         );
 
       case 'P2003':
-        // Foreign key constraint violation
         return new AppError(
           'Cannot perform this operation due to related data constraints',
           400,
@@ -62,7 +62,6 @@ export const handlePrismaError = (error: any): AppError => {
         );
 
       case 'P2014':
-        // Required relation violation
         return new AppError(
           'The change you are trying to make would violate the required relation',
           400,
@@ -70,7 +69,6 @@ export const handlePrismaError = (error: any): AppError => {
         );
 
       case 'P2021':
-        // Table does not exist
         return new AppError(
           'Database table does not exist',
           500,
@@ -78,7 +76,6 @@ export const handlePrismaError = (error: any): AppError => {
         );
 
       case 'P2022':
-        // Column does not exist
         return new AppError(
           'Database column does not exist',
           500,
@@ -86,7 +83,6 @@ export const handlePrismaError = (error: any): AppError => {
         );
 
       case 'P2023':
-        // Inconsistent column data
         return new AppError(
           'Inconsistent column data',
           400,
@@ -94,7 +90,6 @@ export const handlePrismaError = (error: any): AppError => {
         );
 
       case 'P2024':
-        // Connection timeout
         return new AppError(
           'Database connection timeout',
           500,
@@ -102,7 +97,6 @@ export const handlePrismaError = (error: any): AppError => {
         );
 
       case 'P2034':
-        // Transaction conflict
         return new AppError(
           'Transaction failed due to a write conflict or deadlock',
           409,
@@ -159,9 +153,9 @@ export const handlePrismaError = (error: any): AppError => {
 };
 
 /**
- * Send error response to client
+ * Helper to return error response JSON
  */
-export const sendErrorResponse = (res: Response, error: AppError): void => {
+export const createErrorResponse = (error: AppError, env?: string): ErrorResponse => {
   const errorResponse: ErrorResponse = {
     success: false,
     message: error.message,
@@ -169,32 +163,20 @@ export const sendErrorResponse = (res: Response, error: AppError): void => {
   };
 
   // Include error details in development mode
-  if (process.env.NODE_ENV === 'development') {
+  if (env === 'development') {
     errorResponse.error = error.stack;
   }
-
-  res.status(error.statusCode).json(errorResponse);
+  return errorResponse;
 };
 
 /**
  * Centralized error handler for controllers
- * Usage: handleControllerError(error, res)
  */
-export const handleControllerError = (error: any, res: Response): void => {
+export const handleControllerError = (error: any, c: Context): Response => {
   const appError = handlePrismaError(error);
-  sendErrorResponse(res, appError);
-};
-
-/**
- * Async wrapper for controller functions to handle errors automatically
- * Usage: asyncHandler(async (req, res) => { ... })
- */
-export const asyncHandler = (fn: Function) => {
-  return (req: any, res: any, next: any) => {
-    Promise.resolve(fn(req, res, next)).catch((error) => {
-      handleControllerError(error, res);
-    });
-  };
+  const response = createErrorResponse(appError, c.env?.NODE_ENV);
+  // @ts-ignore
+  return c.json(response, appError.statusCode);
 };
 
 /**
