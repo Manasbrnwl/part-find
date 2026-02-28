@@ -9,7 +9,6 @@ import userRoutes from "./routes/userRoutes";
 import postRoutes from "./routes/postRoutes";
 import masterRoutes from "./routes/masterRoutes";
 import ratingRoutes from "./routes/ratingRoutes";
-import notificationRoutes from "./routes/notificationRoutes";
 
 const app = new Hono();
 
@@ -29,7 +28,6 @@ app.route("/users", userRoutes);
 app.route("/post", postRoutes);
 app.route("/master", masterRoutes);
 app.route("/rating", ratingRoutes);
-app.route("/notifications", notificationRoutes);
 
 // Error handling is built-in but can be customized
 app.onError((err, c) => {

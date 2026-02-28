@@ -17,7 +17,6 @@ import {
   handleNotFoundError,
   handleValidationError,
 } from "../utils/errorHandler";
-import { getFirebaseAdmin } from "../../utils/firebase";
 // @ts-ignore
 import { sendEmailNotification } from "../../utils/notification/email.notification";
 import { getPrisma } from "../lib/prisma";
@@ -208,80 +207,6 @@ export const verifyOTP = async (c: Context) => {
       },
     });
   } catch (error) {
-    return handleControllerError(error, c);
-  }
-};
-
-/**
- * Complete Third Party Login/Signup
- */
-export const loginGoogleUser = async (c: Context) => {
-  try {
-    const prisma = getPrisma(c.env);
-    const { fcmToken, idToken } = await c.req.json();
-
-    if (!idToken || !fcmToken) {
-      return c.json({
-        success: false,
-        message: "Google ID token and FCM token are required",
-      }, 400);
-    }
-
-    // Note: clean this up for edge if firebase-admin is not edge compatible
-    const admin = getFirebaseAdmin();
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    const { user_id, email, name } = decodedToken;
-
-    if (!email) {
-      return c.json({
-        success: false,
-        message: "Google account does not have an associated email",
-      }, 400);
-    }
-
-    let user = await prisma.user.findUnique({
-      where: {
-        email,
-      },
-    });
-
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          id: user_id,
-          name,
-          email,
-        },
-      });
-    }
-
-    // Generate tokens
-    const accessToken = generateAccessToken(user.id, user.email, c.env?.JWT_SECRET);
-    const refreshToken = await createAndSaveRefreshToken(prisma, user.id);
-
-    // Update FCM token
-    user = await prisma.user.update({
-      where: {
-        id: user.id,
-      },
-      data: {
-        fcm_token: fcmToken,
-      },
-    });
-
-    return c.json({
-      success: true,
-      data: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone_number || "",
-        role: user.role,
-        accessToken,
-        refreshToken,
-      },
-    });
-  } catch (error: any) {
     return handleControllerError(error, c);
   }
 };

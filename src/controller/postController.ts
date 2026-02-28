@@ -6,7 +6,6 @@ import {
   handleForbiddenError,
   handleValidationError,
 } from "../utils/errorHandler";
-import { scheduleJobReminder } from "../queues/notificationQueue";
 import { getPrisma } from "../lib/prisma";
 
 export const createPosts = async (c: Context) => {
@@ -404,16 +403,7 @@ export const applyToPost = async (c: Context) => {
     });
 
     // Schedule job reminder notification for 1 day before start
-    if (user?.fcm_token) {
-      await scheduleJobReminder({
-        userId,
-        postId: id,
-        postTitle: post.title,
-        startDate: post.startDate,
-        location: post.location || "TBD",
-        fcmToken: user.fcm_token,
-      });
-    }
+    // Removed legacy background job notification queue. Add Cloudflare Queues integration here later if required.
 
     return c.json({
       success: true,

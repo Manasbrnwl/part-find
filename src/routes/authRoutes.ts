@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import {
-  loginGoogleUser,
   requestOTP,
   verifyOTP,
   logout,
@@ -15,7 +14,6 @@ const auth = new Hono();
 // Public auth routes
 auth.post("/request-otp", requestOTP);
 auth.post("/verify-otp", verifyOTP);
-auth.post("/firebase-signin", loginGoogleUser);
 auth.post("/refresh", refreshTokens);
 
 // Protected auth routes

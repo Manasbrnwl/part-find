@@ -9,62 +9,29 @@ services:
     container_name: part-find-api
     restart: unless-stopped
     ports:
-      - "${PORT:-4000}:${PORT:-4000}"
+      - "4000:4000"
     environment:
-      - NODE_ENV=${NODE_ENV:-development}
-      - PORT=${PORT:-4000}
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-partfind}:${POSTGRES_PASSWORD:-partfind123}@postgres:5432/${POSTGRES_DB:-partfind_db}?schema=public
-      - JWT_SECRET=${JWT_SECRET}
-      - EMAIL_USER=${EMAIL_USER}
-      - EMAIL_PASS=${EMAIL_PASS}
-      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
-      - FIREBASE_CLIENT_EMAIL=${FIREBASE_CLIENT_EMAIL}
-      - FIREBASE_PRIVATE_KEY=${FIREBASE_PRIVATE_KEY}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      - REDIS_URL=redis://${REDIS_PASSWORD:+:$REDIS_PASSWORD@}redis:6379
-    depends_on:
-      - redis
-      - postgres
+      - NODE_ENV=development
+      - PORT=4000
+      - DATABASE_URL="postgresql://postgres:oQWPxDUPIm7GGvdV@db.amsspladllqxwbttlqoa.supabase.co:5432/postgres"
+      - JWT_SECRET=d2c4dd34872fb7fd7fabe9aa57f7225d969ac672b0b78da180b906015c826a226efe5f2524385462bf8da014dbcf67463b5fe1d4e16a4e880d422ba08afeb0d6
+      - EMAIL_USER=noreplypartfind@gmail.com
+      - EMAIL_PASS=nkui acnk owkr dolx
+      - FIREBASE_PROJECT_ID=partfind-fb054  
+      - FIREBASE_CLIENT_EMAIL=firebase-adminsdk-fbsvc@partfind-fb054.iam.gserviceaccount.com
+      - FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDB07HBjKlN3qo0\nxHd1OnP+osZVhlsSbXTcPaquECe16zqDse9BW+6MTCariavfB+oAEkf6wcA6+QSF\n1QF4VUbq6+R+4GSt9sxRi2TExTCivbA0YXlaWYYMOlIV3fvbB9CaDOJj11+TmRJ9\n46EdTVgw1Kh7KOybHhVgkm4qKUaUYxXRaKaW2IfXB6nrTZv+bxcpy0opUhZ4BAy4\nh8P2g07WuDco19lNGk2feb5rhTxuzO8rJLJJPAQU4505b4XO0TL8HsEvb2NMieOl\n0ZW6hOeVG/dL5m9zQ/9RCxu1/8IiDtoaMpAItnu4c7ZWloEVcV/uuoFLim8GVdVT\n12A30QM1AgMBAAECggEAE7Xb3zNXKjCI/Xm3LigmEJBr+9mAXGTeG+F3gGDrMOA9\nYJQRIQPgw8qgqhQDcthCrwQs5q6aRkT5dUSedCaz4gLgBxj5lAlDaM10j2AAHKSO\njR0Wcp4k+AxcOZYL3Q+z4l6KDR4jPYa07zFdOnYZkEmn4nJccT/Da8EoS8hLwZ4O\ni4NEr2w0cLs7C9EhdtQYDOLR8kiMuUijwNCqTV4BtSXrKhAt5H7TS0k5IwpsXiDF\n0ISd10WZMgfO1gPAUMUcKJISXm7Rh1aAvhhoeuhEzzHTW2VtlVpFIuSse97CreQH\nxfGMgvzi1/7qaVtqHshuCLjr1ASEn+32cpU41XCDtwKBgQDoJFFD64bJ53latk9/\nV+n6dy/tN0Fqu0184yX7T6JGCV7cXcrjQLkI6aHyhHuk9S7IvepjUD+usG8fDVW3\nxEJMum+20cFWOLzHa2LtAef+p3RX2kPDAY8nqx3xUxKw9pqFHemA+GsUatXT5F6S\naQdkhQOIUKt82+Ihq27ccbcA+wKBgQDVv05YmQoH9YXAgLdOka3QlYia4biDkGja\nGxWlT6bRQHJ7zzSHFlIG173GZjzz5L6rIXFNJvypTK12tTX3vLfZktI/c6nxQr10\nPya1p27YUPv5gzyS8lr++eww1onJwVALirTdfa2Str3ivjR+yh/GtIZXJohW7H1A\ng8GYs9K1jwKBgCPcWGFxpOTTyT9mImm9nvt+Jf0zJ/vg61t7i4aDCsJe+DR6mLj6\napsh3E6mgKM+7Pc9v1OQNgY6YzAc0z0MKGHJ+y/2vzMemKsFv8Z1IO2J2MMpiIY7\nW235VSrOdni3367orAWsWn5Q8q9E/AcKCoZQtfb830DuhsREw19ygZ65AoGBAJ0B\nD8BecZLVEvEK2xq4QS9kl1oFES56hboniOfLsSIlL7KnydKsX4YtNHWmJYGU9UTo\npLviNlb5PrVieAjIM1d61DrNb/gKaPUZagqmuPHl0qA9eOILaTG/THG3NLDg8TX5\nJc9IAJYy6xnBUvgK6fpgIgmkASOwRHR+E1diRxUbAoGAS5aeNJAhrBjkn51x5/eu\nCtHgaEVMtm/PHRQGUP9r3BwuKRrpZJJhPqXavtE1p+zSrF9cYNEhROm+P6Lle8yI\n9ZVyKPMzpM/JCJxt4ja+6ixjSlmKxwhmvgUMN6v8oBH56pAJwjyrHnDNYq+tpar3\nNKgCUvv/Oa8HBcfEJQ3wG7w=\n-----END PRIVATE KEY-----\n"
+      - REDIS_URL=rediss://default:AdYwAAIncDIzY2IyZTMzMTQ1YzQ0ZjU3Yjg0NjVhOTBjMGE0MmIwZnAyNTQ4MzI@helpful-hermit-54832.upstash.io:6379
+    # depends_on:
+    #   - postgres
     volumes:
       - ./uploads:/app/uploads
     networks:
       - part-find-network
 
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
-    container_name: part-find-postgres
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:-partfind}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-partfind123}
-      - POSTGRES_DB=${POSTGRES_DB:-partfind_db}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - part-find-network
-
-  # Redis for BullMQ
-  redis:
-    image: redis:7-alpine
-    container_name: part-find-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    networks:
-      - part-find-network
-
-volumes:
-  postgres_data:
-  redis_data:
+# volumes:
+#   postgres_data:
 
 networks:
   part-find-network:
     driver: bridge
+

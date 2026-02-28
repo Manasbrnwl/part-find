@@ -5,7 +5,6 @@ import {
     handleValidationError,
     handleForbiddenError,
 } from "../utils/errorHandler";
-import { queueRatingNotification } from "../queues/notificationQueue";
 import { getPrisma } from "../lib/prisma";
 
 export const createRating = async (c: Context) => {
@@ -102,15 +101,7 @@ export const createRating = async (c: Context) => {
         });
 
         // Queue notification for the user
-        if (user?.fcm_token) {
-            await queueRatingNotification({
-                userId: userId as string,
-                postTitle: post.title,
-                rating: Number(rating),
-                recruiterName: recruiter?.name || "A recruiter",
-                fcmToken: user.fcm_token,
-            });
-        }
+        // Removed legacy background job notification queue. Add Cloudflare Queues integration here later if required.
 
         return c.json({
             success: true,
