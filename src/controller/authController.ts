@@ -95,6 +95,7 @@ export const requestOTP = async (c: Context) => {
     if (isEmail) {
       // Send email with OTP
       await sendEmailNotification(
+        c.env,
         identifier,
         "Part Find - Authentication OTP",
         `Your OTP for authentication is: ${otp}. It will expire in 3 minutes.`,
