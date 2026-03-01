@@ -305,7 +305,6 @@ export const getPostById = asyncHandler(async (req: Request, res: Response) => {
   const post = await prisma.post.findUnique({
     where: {
       id,
-      userId: req.userId,
       is_active: true,
     },
   });
