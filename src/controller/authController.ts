@@ -20,6 +20,7 @@ import {
 // @ts-ignore
 import { sendEmailNotification } from "../../utils/notification/email.notification";
 import { getPrisma } from "../lib/prisma";
+import { verifyFirebaseToken } from "../utils/firebaseAuth";
 
 /**
  * Request OTP for login or signup
@@ -426,3 +427,101 @@ export const deleteProfile = async (c: Context) => {
     return handleControllerError(error, c);
   }
 };
+
+/**
+ * Handle Google Sign-in via Edge-Compatible Firebase Verifier
+ */
+export const loginGoogleUser = async (c: Context) => {
+  try {
+    const prisma = getPrisma(c.env);
+    const body = await c.req.json();
+    const { idToken, fcmToken, role } = body;
+
+    if (!idToken) {
+      throw handleValidationError("ID token is required");
+    }
+
+    const projectId = c.env?.FIREBASE_PROJECT_ID;
+    if (!projectId) {
+      throw new Error("Server Configuration Error: Missing Firebase Project ID");
+    }
+
+    // Verify token using our jose-based verifier
+    const decodedToken = await verifyFirebaseToken(idToken, projectId);
+
+    if (!decodedToken || !decodedToken.email) {
+      throw handleValidationError("Invalid or expired Google ID Token");
+    }
+
+    const { email, name, picture } = decodedToken;
+    const isEmail = true;
+
+    // Check if user exists
+    let user = await prisma.user.findUnique({
+      where: { email: email as string },
+      include: {
+        userImages: { select: { image: true } }
+      }
+    });
+
+    let isNewUser = false;
+
+    if (!user) {
+      // Create new user if they don't exist
+      isNewUser = true;
+      user = await prisma.user.create({
+        data: {
+          email: email as string,
+          name: typeof name === 'string' ? name : null,
+          is_active: true,
+          role: role || "USER",
+          ...(fcmToken && { fcm_token: fcmToken }),
+        },
+        include: {
+          userImages: { select: { image: true } }
+        }
+      });
+
+      // Save picture if provided
+      if (picture && typeof picture === 'string') {
+        await prisma.images.create({
+          data: {
+            userId: user.id,
+            image: picture
+          }
+        });
+      }
+    } else {
+      // Update existing user with FCM token if provided
+      if (fcmToken) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { fcm_token: fcmToken },
+          include: {
+            userImages: { select: { image: true } }
+          }
+        });
+      }
+    }
+
+    // Generate our app tokens (JWT & Refresh Token)
+    const accessToken = generateAccessToken(user.id, user.email, c.env?.JWT_SECRET);
+    const refreshToken = await createAndSaveRefreshToken(prisma, user.id);
+
+    const { jwt_token, ...userWithoutSensitiveData } = user;
+
+    return c.json({
+      success: true,
+      message: isNewUser ? "Google Signup successful" : "Google Login successful",
+      data: {
+        user: userWithoutSensitiveData,
+        accessToken,
+        refreshToken,
+        isNewUser
+      }
+    });
+  } catch (error) {
+    return handleControllerError(error, c);
+  }
+};
+

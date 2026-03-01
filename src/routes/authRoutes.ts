@@ -5,7 +5,8 @@ import {
   logout,
   deleteProfile,
   refreshTokens,
-  logoutAll
+  logoutAll,
+  loginGoogleUser
 } from "../controller/authController";
 import { authenticate } from "../middleware/authMiddleware";
 
@@ -15,6 +16,7 @@ const auth = new Hono();
 auth.post("/request-otp", requestOTP);
 auth.post("/verify-otp", verifyOTP);
 auth.post("/refresh", refreshTokens);
+auth.post("/firebase-signin", loginGoogleUser);
 
 // Protected auth routes
 auth.post("/logout", authenticate, logout);
