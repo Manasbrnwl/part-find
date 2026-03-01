@@ -10,3 +10,12 @@ compatibility_flags = ["nodejs_compat"]
 
 [observability]
 enabled = true
+
+[[queues.producers]]
+queue = "notifications-queue"
+binding = "NOTIFICATIONS_QUEUE"
+
+[[queues.consumers]]
+queue = "notifications-queue"
+max_batch_size = 10
+max_batch_timeout = 5

@@ -9,8 +9,9 @@ import userRoutes from "./routes/userRoutes";
 import postRoutes from "./routes/postRoutes";
 import masterRoutes from "./routes/masterRoutes";
 import ratingRoutes from "./routes/ratingRoutes";
+import { sendFCMNotification } from "./utils/fcmSender";
 
-const app = new Hono();
+const app = new Hono<{ Bindings: any }>();
 
 // Middleware
 app.use("*", cors());
@@ -39,4 +40,32 @@ app.notFound((c) => {
   return c.text('Not Found', 404);
 });
 
-export default app;
+// Configure standard fetch handling and queue processing
+export default {
+  fetch: app.fetch,
+
+  async queue(batch: any, env: any): Promise<void> {
+    for (const message of batch.messages) {
+      try {
+        const payload = message.body;
+        console.log(`[Queue] Processing notification:`, payload.type);
+
+        if (payload.fcmToken && payload.title) {
+          await sendFCMNotification(
+            env,
+            payload.fcmToken,
+            payload.title,
+            payload.body || "",
+            payload.data
+          );
+        }
+
+        // Acknowledge the message so it is removed from the queue
+        message.ack();
+      } catch (error) {
+        console.error("[Queue Error] Failed to process message:", error);
+        // Message will be retried automatically if not ack'd
+      }
+    }
+  }
+};

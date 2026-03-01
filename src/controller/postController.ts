@@ -402,8 +402,20 @@ export const applyToPost = async (c: Context) => {
       },
     });
 
-    // Schedule job reminder notification for 1 day before start
-    // Removed legacy background job notification queue. Add Cloudflare Queues integration here later if required.
+    // Queue notification via Cloudflare Queues
+    if (user?.fcm_token) {
+      try {
+        await c.env.NOTIFICATIONS_QUEUE.send({
+          type: 'post_applied',
+          fcmToken: user.fcm_token,
+          title: "Application Received",
+          body: `You have successfully applied to the post: ${post.title}`,
+          data: { postId: post.id }
+        });
+      } catch (err) {
+        console.error("Failed to queue notification:", err);
+      }
+    }
 
     return c.json({
       success: true,

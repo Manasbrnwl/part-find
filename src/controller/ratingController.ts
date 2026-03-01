@@ -100,8 +100,20 @@ export const createRating = async (c: Context) => {
             },
         });
 
-        // Queue notification for the user
-        // Removed legacy background job notification queue. Add Cloudflare Queues integration here later if required.
+        // Queue notification for the user via Cloudflare Queues
+        if (user?.fcm_token) {
+            try {
+                await c.env.NOTIFICATIONS_QUEUE.send({
+                    type: 'rating_received',
+                    fcmToken: user.fcm_token,
+                    title: "New Rating Received",
+                    body: `${recruiter?.name || 'A recruiter'} has rated you for the job: ${post.title}.`,
+                    data: { postId: post.id, rating: rating.toString() }
+                });
+            } catch (err) {
+                console.error("Failed to queue notification:", err);
+            }
+        }
 
         return c.json({
             success: true,
