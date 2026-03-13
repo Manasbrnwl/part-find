@@ -542,11 +542,47 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
     }),
   ]);
 
+  // Fetch average ratings for all users in the list
+  const userIds = list.map((app) => app.user.id);
+  const averageRatings = await prisma.rating.groupBy({
+    by: ["userId"],
+    where: {
+      userId: { in: userIds },
+    },
+    _avg: {
+      rating: true,
+    },
+    _count: {
+      rating: true,
+    },
+  });
+
+  const ratingMap = new Map(
+    averageRatings.map((r) => [
+      r.userId,
+      {
+        averageRating: r._avg.rating ? Number(r._avg.rating.toFixed(1)) : 0,
+        totalRatings: r._count.rating,
+      },
+    ])
+  );
+
+  const listWithRatings = list.map((app) => ({
+    ...app,
+    user: {
+      ...app.user,
+      overallRating: ratingMap.get(app.user.id) || {
+        averageRating: 0,
+        totalRatings: 0,
+      },
+    },
+  }));
+
   res.status(200).json({
     success: true,
     message: "Post applications retrieved successfully",
     data: {
-      list,
+      list: listWithRatings,
       totalPages: Math.ceil(total / pageSize),
       currentPage: pageNumber,
       totalApplications: total,

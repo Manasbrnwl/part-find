@@ -321,6 +321,8 @@ export const updateRecruiterProfile = asyncHandler(
       gigTypes,
     } = req.body;
 
+    const lowercasedEmail = email ? email.toLowerCase() : undefined;
+
     // Validate required fields
     if (!fullName || !email || !mobileNumber) {
       throw handleValidationError(
@@ -350,10 +352,10 @@ export const updateRecruiterProfile = asyncHandler(
     }
 
     // Check if email is being changed to a different email
-    if (email !== user.email) {
+    if (lowercasedEmail !== user.email) {
       // Verify new email is not already taken by another user
       const existingUser = await prisma.user.findUnique({
-        where: { email: email },
+        where: { email: lowercasedEmail },
       });
 
       if (existingUser && existingUser.id !== userId) {
@@ -378,7 +380,7 @@ export const updateRecruiterProfile = asyncHandler(
       where: { id: userId },
       data: {
         name: fullName,
-        email: email,
+        email: lowercasedEmail,
         phone_number: mobileNumber,
         recruiter_company_name: companyName,
         recruiter_type: recruiterType,

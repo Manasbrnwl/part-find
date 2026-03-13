@@ -43,7 +43,7 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
     throw handleValidationError("Email or phone number is required");
   }
 
-  const identifier = email || phone_number;
+  const identifier = email ? email.toLowerCase() : phone_number;
   const isEmail = !!email;
 
   // Check if user exists
@@ -232,7 +232,8 @@ export const loginGoogleUser = asyncHandler(
       }
       const admin = getFirebaseAdmin();
       const decodedToken = await admin.auth().verifyIdToken(idToken);
-      const { user_id, email, name } = decodedToken;
+      const { user_id, email: rawEmail, name } = decodedToken;
+      const email = rawEmail?.toLowerCase();
 
       if (!email) {
         return res.status(400).json({
@@ -243,7 +244,7 @@ export const loginGoogleUser = asyncHandler(
 
       let user = await prisma.user.findUnique({
         where: {
-          email,
+          email: email,
         },
       });
       if (!user) {

@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import morgan from "morgan";
@@ -64,7 +64,7 @@ app.use((_req, res) => {
 });
 
 // Error handling middleware
-app.use((err: any, _req: any, res: any, _next: any) => {
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err.stack);
   res.status(500).send("Something broke!");
 });
