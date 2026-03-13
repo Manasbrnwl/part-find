@@ -14,6 +14,18 @@ if (redisUrl) {
   redisConnection = {
     ...parseRedisUrl(redisUrl),
     maxRetriesPerRequest: null,
+    retryStrategy(times: number) {
+      const delay = Math.min(times * 200, 30000); // Slower retries for Upstash
+      return delay;
+    },
+    reconnectOnError(err: any) {
+      const targetError = "ERR max requests limit exceeded";
+      if (err.message.includes(targetError)) {
+        console.warn("⚠️ Redis quota exceeded. Retrying later...");
+        return false;
+      }
+      return true;
+    }
   };
 } else {
   // Fallback to host/port config (local Redis)
@@ -22,6 +34,19 @@ if (redisUrl) {
     port: parseInt(process.env.REDIS_PORT || "6379"),
     password: process.env.REDIS_PASSWORD || undefined,
     maxRetriesPerRequest: null,
+    retryStrategy(times: number) {
+      const delay = Math.min(times * 100, 15000);
+      return delay;
+    },
+    // ioredis specific configuration to handle connection errors
+    reconnectOnError(err: any) {
+      const targetError = "ERR max requests limit exceeded";
+      if (err.message.includes(targetError)) {
+        console.warn("⚠️ Redis quota exceeded. Retrying in 1 minute...");
+        return false; // Stop reconnecting immediately, wait for manual or retryStrategy
+      }
+      return true;
+    }
   };
 }
 
@@ -36,16 +61,5 @@ function parseRedisUrl(url: string) {
     ...(useTls ? { tls: {} } : {}),
   };
 }
-
-// Create Redis connection
-export const redis = new Redis(redisConnection);
-
-redis.on("connect", () => {
-  console.log("✅ Redis connected for BullMQ");
-});
-
-redis.on("error", (err) => {
-  console.error("❌ Redis connection error:", err.message);
-});
 
 export { redisConnection };

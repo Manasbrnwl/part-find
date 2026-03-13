@@ -43,43 +43,44 @@ export const notificationQueue = new Queue("notifications", {
  * Schedule a job reminder notification for 1 day before the job starts
  */
 export async function scheduleJobReminder(data: JobReminderData) {
-    const startDate = new Date(data.startDate);
-    const reminderDate = new Date(startDate);
-    reminderDate.setDate(reminderDate.getDate() - 1); // 1 day before
-    reminderDate.setHours(9, 0, 0, 0); // Set to 9 AM
+    // const startDate = new Date(data.startDate);
+    // const reminderDate = new Date(startDate);
+    // reminderDate.setDate(reminderDate.getDate() - 1); // 1 day before
+    // reminderDate.setHours(9, 0, 0, 0); // Set to 9 AM
 
-    const delay = reminderDate.getTime() - Date.now();
+    // const delay = reminderDate.getTime() - Date.now();
 
-    // Only schedule if reminder time is in the future
-    if (delay > 0) {
-        await notificationQueue.add(
-            NotificationType.JOB_REMINDER,
-            data,
-            {
-                delay,
-                jobId: `reminder-${data.postId}-${data.userId}`,
-            }
-        );
-        console.log(`📅 Job reminder scheduled for ${reminderDate.toISOString()}`);
-        return true;
-    } else {
-        console.log(`⚠️ Job starts too soon, no reminder scheduled`);
-        return false;
-    }
+    // // Only schedule if reminder time is in the future
+    // if (delay > 0) {
+    //     await notificationQueue.add(
+    //         NotificationType.JOB_REMINDER,
+    //         data,
+    //         {
+    //             delay,
+    //             jobId: `reminder-${data.postId}-${data.userId}`,
+    //         }
+    //     );
+    //     console.log(`📅 Job reminder scheduled for ${reminderDate.toISOString()}`);
+    //     return true;
+    // } else {
+    //     console.log(`⚠️ Job starts too soon, no reminder scheduled`);
+    //     return false;
+    // }
+    return false;
 }
 
 /**
  * Queue an immediate rating notification
  */
 export async function queueRatingNotification(data: RatingNotificationData) {
-    await notificationQueue.add(
-        NotificationType.RATING_RECEIVED,
-        data,
-        {
-            jobId: `rating-${data.userId}-${Date.now()}`,
-        }
-    );
-    console.log(`⭐ Rating notification queued for user ${data.userId}`);
+    // await notificationQueue.add(
+    //     NotificationType.RATING_RECEIVED,
+    //     data,
+    //     {
+    //         jobId: `rating-${data.userId}-${Date.now()}`,
+    //     }
+    // );
+    // console.log(`⭐ Rating notification queued for user ${data.userId}`);
 }
 
 // Log queue events

@@ -7,30 +7,7 @@ import {
 } from "./notificationQueue";
 import { sendFCMNotification } from "../../utils/firebase";
 
-// Create worker to process notification jobs
-export const notificationWorker = new Worker(
-    "notifications",
-    async (job: Job) => {
-        console.log(`🔔 Processing notification job: ${job.name} (${job.id})`);
-
-        switch (job.name) {
-            case NotificationType.JOB_REMINDER:
-                await processJobReminder(job.data as JobReminderData);
-                break;
-
-            case NotificationType.RATING_RECEIVED:
-                await processRatingNotification(job.data as RatingNotificationData);
-                break;
-
-            default:
-                console.warn(`⚠️ Unknown notification type: ${job.name}`);
-        }
-    },
-    {
-        connection: redisConnection,
-        concurrency: 5,
-    }
-);
+let notificationWorker: Worker | null = null;
 
 /**
  * Process job reminder notification
@@ -80,20 +57,63 @@ async function processRatingNotification(data: RatingNotificationData) {
     console.log(`✅ Rating notification sent to user ${data.userId}`);
 }
 
-// Worker event listeners
-notificationWorker.on("completed", (job) => {
-    console.log(`✅ Job ${job.id} completed successfully`);
-});
-
-notificationWorker.on("failed", (job, err) => {
-    console.error(`❌ Job ${job?.id} failed:`, err.message);
-});
-
-notificationWorker.on("error", (err) => {
-    console.error("❌ Worker error:", err);
-});
-
 export function startNotificationWorker() {
-    console.log("🚀 Notification worker started");
-    return notificationWorker;
+    if (notificationWorker) return notificationWorker;
+
+    try {
+        console.log("🚀 Initializing notification worker...");
+        notificationWorker = new Worker(
+            "notifications",
+            async (job: Job) => {
+                console.log(`🔔 Processing notification job: ${job.name} (${job.id})`);
+        
+                switch (job.name) {
+                    case NotificationType.JOB_REMINDER:
+                        await processJobReminder(job.data as JobReminderData);
+                        break;
+        
+                    case NotificationType.RATING_RECEIVED:
+                        await processRatingNotification(job.data as RatingNotificationData);
+                        break;
+        
+                    default:
+                        console.warn(`⚠️ Unknown notification type: ${job.name}`);
+                }
+            },
+            {
+                connection: redisConnection,
+                concurrency: 2,
+                lockDuration: 60000,
+                stalledInterval: 60000,
+                maxStalledCount: 1,
+                drainDelay: 60,
+            }
+        );
+
+        // Worker event listeners
+        notificationWorker.on("completed", (job) => {
+            console.log(`✅ Job ${job.id} completed successfully`);
+        });
+
+        notificationWorker.on("failed", (job, err) => {
+            console.error(`❌ Job ${job?.id} failed:`, err.message);
+        });
+
+        notificationWorker.on("error", (err) => {
+            if (err.message.includes("max requests limit exceeded")) {
+                console.warn("⚠️ Worker standby: Redis limit reached.");
+            } else {
+                console.error("❌ Worker error:", err.message);
+            }
+        });
+
+        notificationWorker.on("ready", () => {
+            console.log("✅ Notification worker is ready and connected");
+        });
+
+        return notificationWorker;
+    } catch (err: any) {
+        console.error("❌ Failed to start notification worker:", err.message);
+        return null;
+    }
 }
