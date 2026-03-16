@@ -321,26 +321,33 @@ export const updateRecruiterProfile = asyncHandler(
       gigTypes,
     } = req.body;
 
-    const lowercasedEmail = email ? email.toLowerCase() : undefined;
+    const finalFullName = fullName || user.name;
+    const finalEmail = email || user.email;
+    const finalMobileNumber = mobileNumber || user.phone_number;
+    const finalRecruiterType = recruiterType || user.recruiter_type;
+    const finalCompanyName = companyName || user.recruiter_company_name;
+    const finalCompanyAddress = companyAddress || user.recruiter_company_address;
 
-    // Validate required fields
-    if (!fullName || !email || !mobileNumber) {
+    const lowercasedEmail = finalEmail ? finalEmail.toLowerCase() : undefined;
+
+    // Validate required fields (must exist in either request or database)
+    if (!finalFullName || !finalEmail || !finalMobileNumber) {
       throw handleValidationError(
         "Full Name, Email, and Mobile Number are required"
       );
     }
 
-    if (!recruiterType) {
+    if (!finalRecruiterType) {
       throw handleValidationError(
         "Recruiter Type (Individual/Company/Agency/Event Organizer) is required"
       );
     }
 
-    if (!companyName) {
+    if (!finalCompanyName) {
       throw handleValidationError("Company/Organization Name is required");
     }
 
-    if (!companyAddress) {
+    if (!finalCompanyAddress) {
       throw handleValidationError("Company Address is required");
     }
 
@@ -352,7 +359,7 @@ export const updateRecruiterProfile = asyncHandler(
     }
 
     // Check if email is being changed to a different email
-    if (lowercasedEmail !== user.email) {
+    if (lowercasedEmail && lowercasedEmail !== user.email) {
       // Verify new email is not already taken by another user
       const existingUser = await prisma.user.findUnique({
         where: { email: lowercasedEmail },
@@ -364,10 +371,10 @@ export const updateRecruiterProfile = asyncHandler(
     }
 
     // Check if phone number is being changed to a different number
-    if (mobileNumber !== user.phone_number) {
+    if (finalMobileNumber && finalMobileNumber !== user.phone_number) {
       // Verify new phone number is not already taken by another user
       const existingUserWithPhone = await prisma.user.findUnique({
-        where: { phone_number: mobileNumber },
+        where: { phone_number: finalMobileNumber },
       });
 
       if (existingUserWithPhone && existingUserWithPhone.id !== userId) {
@@ -379,13 +386,13 @@ export const updateRecruiterProfile = asyncHandler(
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: {
-        name: fullName,
+        name: finalFullName,
         email: lowercasedEmail,
-        phone_number: mobileNumber,
-        recruiter_company_name: companyName,
-        recruiter_type: recruiterType,
-        recruiter_company_registration: companyRegistration || null,
-        recruiter_company_address: companyAddress,
+        phone_number: finalMobileNumber,
+        recruiter_company_name: finalCompanyName,
+        recruiter_type: finalRecruiterType,
+        recruiter_company_registration: companyRegistration || user.recruiter_company_registration,
+        recruiter_company_address: finalCompanyAddress,
         recruiter_company_logo: logoFilename || user.recruiter_company_logo,
       },
     });

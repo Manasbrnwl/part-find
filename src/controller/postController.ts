@@ -544,6 +544,21 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
 
   // Fetch average ratings for all users in the list
   const userIds = list.map((app) => app.user.id);
+  
+  // Fetch existing ratings for this post to set the "alreadyrated" flag
+  const existingRatings = await prisma.rating.findMany({
+    where: {
+      postId: id,
+      recruiterId: req.userId,
+      userId: { in: userIds },
+    },
+    select: {
+      userId: true,
+    },
+  });
+
+  const ratedUserSet = new Set(existingRatings.map(r => r.userId));
+
   const averageRatings = await prisma.rating.groupBy({
     by: ["userId"],
     where: {
@@ -563,6 +578,7 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
       {
         averageRating: r._avg.rating ? Number(r._avg.rating.toFixed(1)) : 0,
         totalRatings: r._count.rating,
+        alreadyrated: ratedUserSet.has(r.userId),
       },
     ])
   );
@@ -574,6 +590,7 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
       overallRating: ratingMap.get(app.user.id) || {
         averageRating: 0,
         totalRatings: 0,
+        alreadyrated: false,
       },
     },
   }));
