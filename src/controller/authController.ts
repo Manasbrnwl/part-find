@@ -21,6 +21,7 @@ import {
   handleValidationError,
   asyncHandler,
 } from "../utils/errorHandler";
+import { logger } from "../../utils/logger";
 import { getFirebaseAdmin } from "../../utils/firebase";
 const {
   sendEmailNotification,
@@ -50,6 +51,7 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
   let user = await prisma.user.findFirst({
     select: {
       id: true,
+      email: true,
       name: true,
       userImages: {
         select: {
@@ -62,6 +64,13 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
       email: isEmail ? identifier : undefined,
       phone_number: !isEmail ? identifier : undefined,
     },
+  });
+
+  logger.info("OTP requested", { 
+    identifier, 
+    isEmail, 
+    userExists: !!user,
+    userId: user?.id 
   });
 
   // Generate OTP
@@ -87,6 +96,7 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
       },
       select: {
         id: true,
+        email: true,
         name: true,
         userImages: {
           select: {
@@ -122,7 +132,7 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
     data: {
       userId: user?.id,
       profile: user?.userImages,
-      isNewUser: !user?.name, // If name is not set, it's likely a new user
+      isNewUser: !user?.name,
     },
   });
 });
@@ -145,11 +155,13 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
   });
 
   if (!user) {
+    logger.warn("Verification failed: User not found", { userId });
     throw handleNotFoundError("User");
   }
 
   // Check if OTP exists and is not expired
   if (!user.otp || !user.otp_exp) {
+    logger.error("No OTP was generated for this user", { userId, isAlreadyLoggedIn: !!user.name });
     throw handleValidationError("No OTP was generated for this user");
   }
 
@@ -158,7 +170,8 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Verify OTP
-  if (user.otp !== otp.toString()) {
+  if (user.otp.toString() !== otp.toString()) {
+    logger.warn("Verification failed: Invalid OTP", { userId });
     throw handleValidationError("Invalid OTP");
   }
 

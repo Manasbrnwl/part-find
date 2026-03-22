@@ -10,6 +10,7 @@ import {
   handleAuthorizationError,
   asyncHandler,
 } from "../utils/errorHandler";
+import { logger } from "../../utils/logger";
 
 dotenv.config();
 
@@ -330,25 +331,9 @@ export const updateRecruiterProfile = asyncHandler(
 
     const lowercasedEmail = finalEmail ? finalEmail.toLowerCase() : undefined;
 
-    // Validate required fields (must exist in either request or database)
-    if (!finalFullName || !finalEmail || !finalMobileNumber) {
-      throw handleValidationError(
-        "Full Name, Email, and Mobile Number are required"
-      );
-    }
-
-    if (!finalRecruiterType) {
-      throw handleValidationError(
-        "Recruiter Type (Individual/Company/Agency/Event Organizer) is required"
-      );
-    }
-
-    if (!finalCompanyName) {
-      throw handleValidationError("Company/Organization Name is required");
-    }
-
-    if (!finalCompanyAddress) {
-      throw handleValidationError("Company Address is required");
+    // Validate that we at least have an email (required by schema)
+    if (!finalEmail) {
+      throw handleValidationError("Email is required");
     }
 
     // Handle company logo upload if present
