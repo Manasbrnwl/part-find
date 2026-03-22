@@ -1,5 +1,6 @@
 import { Queue } from "bullmq";
 import { redisConnection } from "./config";
+import { logger } from "../../utils/logger";
 
 export enum NotificationType {
     JOB_REMINDER = "JOB_REMINDER",
@@ -59,10 +60,10 @@ function getNotificationQueue(): Queue {
         });
 
         _notificationQueue.on("error", (err) => {
-            console.error("❌ Notification queue error:", err);
+            logger.error("Notification queue error", { error: err });
         });
 
-        console.log("📨 Notification queue initialized");
+        logger.info("Notification queue initialized");
     }
     return _notificationQueue;
 }
@@ -87,10 +88,10 @@ export async function scheduleJobReminder(data: JobReminderData) {
                 jobId: `reminder-${data.postId}-${data.userId}`,
             }
         );
-        console.log(`📅 Job reminder scheduled for ${reminderDate.toISOString()}`);
+        logger.info(`Job reminder scheduled for ${reminderDate.toISOString()}`);
         return true;
     } else {
-        console.log(`⚠️ Job starts too soon, no reminder scheduled`);
+        logger.warn("Job starts too soon, no reminder scheduled");
         return false;
     }
 }
@@ -106,7 +107,7 @@ export async function queueRatingNotification(data: RatingNotificationData) {
             jobId: `rating-${data.userId}-${Date.now()}`,
         }
     );
-    console.log(`⭐ Rating notification queued for user ${data.userId}`);
+    logger.info(`Rating notification queued for user ${data.userId}`);
 }
 
 /**
@@ -120,7 +121,7 @@ export async function queueNewJobNotification(data: NewJobPostedData) {
             jobId: `new-job-${data.postId}-${Date.now()}`,
         }
     );
-    console.log(`📢 New job notification queued for ${data.fcmTokens.length} users`);
+    logger.info(`New job notification queued for ${data.fcmTokens.length} users`);
 }
 
 /**
@@ -134,6 +135,6 @@ export async function queueNewApplicationNotification(data: NewApplicationData) 
             jobId: `application-${data.postId}-${Date.now()}`,
         }
     );
-    console.log(`📋 Application notification queued for recruiter`);
+    logger.info("Application notification queued for recruiter");
 }
 

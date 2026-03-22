@@ -1,5 +1,6 @@
 import Redis from "ioredis";
 import dotenv from "dotenv";
+import { logger } from "../../utils/logger";
 
 dotenv.config();
 
@@ -28,7 +29,7 @@ if (redisUrl) {
     },
     reconnectOnError(err: Error) {
       if (err.message.includes("ERR max requests limit exceeded")) {
-        console.warn("⚠️ Redis quota exceeded. Retrying later...");
+        logger.warn("Redis quota exceeded. Retrying later...");
         return false;
       }
       return true;
@@ -45,7 +46,7 @@ if (redisUrl) {
     },
     reconnectOnError(err: Error) {
       if (err.message.includes("ERR max requests limit exceeded")) {
-        console.warn("⚠️ Redis quota exceeded. Retrying in 1 minute...");
+        logger.warn("Redis quota exceeded. Retrying in 1 minute...");
         return false;
       }
       return true;

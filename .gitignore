@@ -5,4 +5,5 @@ package-lock.json
 
 /src/generated/prisma
 /dist
+/logs
 /*.md

@@ -8,6 +8,7 @@ import {
     NewApplicationData,
 } from "./notificationQueue";
 import { sendFCMNotification, sendFCMToMultipleTokens } from "../../utils/firebase";
+import { logger } from "../../utils/logger";
 
 let notificationWorker: Worker | null = null;
 
@@ -16,7 +17,7 @@ let notificationWorker: Worker | null = null;
  */
 async function processJobReminder(data: JobReminderData) {
     if (!data.fcmToken) {
-        console.log(`⚠️ No FCM token for user ${data.userId}, skipping notification`);
+        logger.warn(`No FCM token for user ${data.userId}, skipping notification`);
         return;
     }
 
@@ -27,7 +28,7 @@ async function processJobReminder(data: JobReminderData) {
         type: NotificationType.JOB_REMINDER,
     });
 
-    console.log(`✅ Job reminder sent to user ${data.userId}`);
+    logger.info(`Job reminder sent to user ${data.userId}`);
 }
 
 /**
@@ -35,7 +36,7 @@ async function processJobReminder(data: JobReminderData) {
  */
 async function processRatingNotification(data: RatingNotificationData) {
     if (!data.fcmToken) {
-        console.log(`⚠️ No FCM token for user ${data.userId}, skipping notification`);
+        logger.warn(`No FCM token for user ${data.userId}, skipping notification`);
         return;
     }
 
@@ -48,7 +49,7 @@ async function processRatingNotification(data: RatingNotificationData) {
         type: NotificationType.RATING_RECEIVED,
     });
 
-    console.log(`✅ Rating notification sent to user ${data.userId}`);
+    logger.info(`Rating notification sent to user ${data.userId}`);
 }
 
 /**
@@ -56,7 +57,7 @@ async function processRatingNotification(data: RatingNotificationData) {
  */
 async function processNewJobPosted(data: NewJobPostedData) {
     if (!data.fcmTokens.length) {
-        console.log(`⚠️ No FCM tokens available, skipping new job notification`);
+        logger.warn("No FCM tokens available, skipping new job notification");
         return;
     }
 
@@ -67,7 +68,7 @@ async function processNewJobPosted(data: NewJobPostedData) {
         type: NotificationType.NEW_JOB_POSTED,
     });
 
-    console.log(`✅ New job notification broadcast to ${data.fcmTokens.length} users`);
+    logger.info(`New job notification broadcast to ${data.fcmTokens.length} users`);
 }
 
 /**
@@ -75,7 +76,7 @@ async function processNewJobPosted(data: NewJobPostedData) {
  */
 async function processNewApplication(data: NewApplicationData) {
     if (!data.recruiterFcmToken) {
-        console.log(`⚠️ No FCM token for recruiter, skipping application notification`);
+        logger.warn("No FCM token for recruiter, skipping application notification");
         return;
     }
 
@@ -86,18 +87,18 @@ async function processNewApplication(data: NewApplicationData) {
         type: NotificationType.NEW_APPLICATION,
     });
 
-    console.log(`✅ Application notification sent to recruiter for post ${data.postId}`);
+    logger.info(`Application notification sent to recruiter for post ${data.postId}`);
 }
 
 export function startNotificationWorker() {
     if (notificationWorker) return notificationWorker;
 
     try {
-        console.log("🚀 Initializing notification worker...");
+        logger.info("Initializing notification worker...");
         notificationWorker = new Worker(
             "notifications",
             async (job: Job) => {
-                console.log(`🔔 Processing notification job: ${job.name} (${job.id})`);
+                logger.info(`Processing notification job: ${job.name} (${job.id})`);
         
                 switch (job.name) {
                     case NotificationType.JOB_REMINDER:
@@ -117,7 +118,7 @@ export function startNotificationWorker() {
                         break;
         
                     default:
-                        console.warn(`⚠️ Unknown notification type: ${job.name}`);
+                        logger.warn(`Unknown notification type: ${job.name}`);
                 }
             },
             {
@@ -132,29 +133,29 @@ export function startNotificationWorker() {
 
         // Worker event listeners
         notificationWorker.on("completed", (job) => {
-            console.log(`✅ Job ${job.id} completed successfully`);
+            logger.info(`Job ${job.id} completed successfully`);
         });
 
         notificationWorker.on("failed", (job, err) => {
-            console.error(`❌ Job ${job?.id} failed:`, err.message);
+            logger.error(`Job ${job?.id} failed`, { error: err.message });
         });
 
         notificationWorker.on("error", (err) => {
             if (err.message.includes("max requests limit exceeded")) {
-                console.warn("⚠️ Worker standby: Redis limit reached.");
+                logger.warn("Worker standby: Redis limit reached.");
             } else {
-                console.error("❌ Worker error:", err.message);
+                logger.error("Worker error", { error: err.message });
             }
         });
 
         notificationWorker.on("ready", () => {
-            console.log("✅ Notification worker is ready and connected");
+            logger.info("Notification worker is ready and connected");
         });
 
         return notificationWorker;
     } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        console.error("❌ Failed to start notification worker:", errMsg);
+        logger.error("Failed to start notification worker", { error: errMsg });
         return null;
     }
 }

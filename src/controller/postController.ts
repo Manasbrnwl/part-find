@@ -14,6 +14,7 @@ import {
   queueNewJobNotification,
   queueNewApplicationNotification,
 } from "../queues/notificationQueue";
+import { logger } from "../../utils/logger";
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -114,7 +115,7 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
       companyName: company_name || "A company",
       location: location || "TBD",
       fcmTokens,
-    }).catch((err) => console.error("❌ Failed to queue new job notification:", err));
+    }).catch((err) => logger.error("Failed to queue new job notification", { error: err }));
   }
 
   res.status(201).json({
@@ -420,7 +421,7 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
       startDate: post.startDate,
       location: post.location || "TBD",
       fcmToken: applicant.fcm_token,
-    }).catch((err) => console.error("❌ Failed to schedule job reminder:", err));
+    }).catch((err) => logger.error("Failed to schedule job reminder", { error: err }));
   }
 
   // Notify recruiter about the new application
@@ -430,7 +431,7 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
       postTitle: post.title,
       applicantName: applicant?.name || "A user",
       recruiterFcmToken: recruiter.fcm_token,
-    }).catch((err) => console.error("❌ Failed to queue application notification:", err));
+    }).catch((err) => logger.error("Failed to queue application notification", { error: err }));
   }
 
   res.status(201).json({

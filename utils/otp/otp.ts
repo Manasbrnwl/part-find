@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { calculateOTPExpiry, generateOTP, isOTPExpired, matchOTP } from "./functions.otp";
+import { logger } from "../logger";
 
 const prisma = new PrismaClient();
 const User = prisma.user;
@@ -42,18 +43,20 @@ exports.generateAndSaveOTP = async (identifier: string, isEmail = true) => {
     // Send OTP via email or SMS
     let sent = false;
     if (isEmail) {
+      const { otpEmailTemplate } = require("../notification/emailTemplates");
+      const { subject, text, html } = otpEmailTemplate(plainOTP, 10);
       sent = sendEmailNotification(
         user.email,
-        "Medicine Reminder App - Login OTP",
-        `Your OTP for login is: ${plainOTP}. It will expire in 10 minutes.`,
-        `<h1>Login OTP</h1><p>Your OTP for login is: <strong>${plainOTP}</strong></p><p>It will expire in 10 minutes.</p>`
+        subject,
+        text,
+        html
       )
         .then((res: any) => res)
         .catch(() => false);
     } else if (user.phone_number) {
       //   sent = await sendSMSNotification(
       //     user.phone,
-      //     `Your Medicine Reminder App login OTP is: ${plainOTP}. It will expire in 10 minutes.`
+      //     `Your Part Find login OTP is: ${plainOTP}. It will expire in 10 minutes.`
       //   )
       //     .then((res: any) => res)
       //     .catch(() => false);
@@ -72,7 +75,7 @@ exports.generateAndSaveOTP = async (identifier: string, isEmail = true) => {
       userId: user.id
     };
   } catch (error) {
-    console.error("OTP generation error:", error);
+    logger.error("OTP generation error", { error });
     return { success: false, message: "Error generating OTP" };
   }
 };
@@ -118,7 +121,7 @@ exports.verifyOTP = async (userId: string, otp: number) => {
 
     return { success: true, user };
   } catch (error) {
-    console.error("OTP verification error:", error);
+    logger.error("OTP verification error", { error });
     return { success: false, message: "Error verifying OTP" };
   }
 };

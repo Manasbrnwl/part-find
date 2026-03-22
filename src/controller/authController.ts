@@ -102,13 +102,9 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
   // Send OTP via email or SMS
   let sent = false;
   if (isEmail) {
-    // Send email with OTP
-    await sendEmailNotification(
-      identifier,
-      "Part Find - Authentication OTP",
-      `Your OTP for authentication is: ${otp}. It will expire in 3 minutes.`,
-      `<h1>Authentication OTP</h1><p>Your OTP for authentication is: <strong>${otp}</strong></p><p>It will expire in 3 minutes.</p>`
-    );
+    const { otpEmailTemplate } = require("../../utils/notification/emailTemplates");
+    const { subject, text, html } = otpEmailTemplate(otp, 3);
+    await sendEmailNotification(identifier, subject, text, html);
     sent = true;
   } else {
     // For SMS implementation (placeholder)

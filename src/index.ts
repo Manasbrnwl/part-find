@@ -10,6 +10,7 @@ import masterRoutes from "./routes/masterRoutes";
 import ratingRoutes from "./routes/ratingRoutes";
 import notificationRoutes from "./routes/notificationRoutes";
 import { startNotificationWorker } from "./queues/notificationWorker";
+import { logger, morganStream } from "../utils/logger";
 import swaggerUi from 'swagger-ui-express';
 import YAML from 'yamljs';
 import path from 'path';
@@ -24,14 +25,14 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(express.json());
 app.use(cors());
-app.use(morgan("dev"));
+app.use(morgan("dev", { stream: morganStream }));
 
 try {
   const swaggerPath = path.join(process.cwd(), 'swagger.yml');
   const swaggerDoc = YAML.load(swaggerPath);
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
 } catch (error) {
-  console.error("Failed to load swagger documentation:", error);
+  logger.error("Failed to load swagger documentation", { error });
 }
 
 // Routes
@@ -65,7 +66,7 @@ app.use((_req, res) => {
 
 // Error handling middleware
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error(err.stack);
+  logger.error("Unhandled error", { message: err.message, stack: err.stack });
   res.status(500).send("Something broke!");
 });
 
@@ -73,12 +74,12 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 try {
   startNotificationWorker();
 } catch (err) {
-  console.error("Failed to start notification worker:", err);
+  logger.error("Failed to start notification worker", { error: err });
 }
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Server is running on PORT ${PORT}`);
+  logger.info(`Server is running on PORT ${PORT}`);
 });
 
 // Handle graceful shutdown

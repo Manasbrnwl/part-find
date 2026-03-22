@@ -1,5 +1,6 @@
 import * as admin from "firebase-admin";
 import dotenv from "dotenv";
+import { logger } from "./logger";
 
 dotenv.config();
 
@@ -29,10 +30,10 @@ const initializeFirebase = (): typeof admin => {
       }),
     });
 
-    console.log("✅ Firebase Admin SDK initialized successfully");
+    logger.info("Firebase Admin SDK initialized successfully");
     return admin;
   } catch (error) {
-    console.error("❌ Failed to initialize Firebase Admin SDK:", error);
+    logger.error("Failed to initialize Firebase Admin SDK", { error });
     throw error;
   }
 };
@@ -60,7 +61,7 @@ const sendFCMNotification = async (
 ): Promise<boolean> => {
   try {
     if (!fcmToken) {
-      console.warn("⚠️ sendFCMNotification called without FCM token");
+      logger.warn("sendFCMNotification called without FCM token");
       return false;
     }
 
@@ -101,16 +102,16 @@ const sendFCMNotification = async (
     };
 
     const response = await firebaseAdmin.messaging().send(message);
-    console.log(`✅ FCM notification sent successfully. Message ID: ${response}`);
+    logger.info(`FCM notification sent successfully. Message ID: ${response}`);
     return true;
   } catch (error: any) {
-    console.error(`❌ Failed to send FCM notification:`, error.message || error);
+    logger.error("Failed to send FCM notification", { error: error.message || error });
 
     // Handle specific FCM errors
     if (error.code === "messaging/registration-token-not-registered") {
-      console.warn("⚠️ FCM token is no longer valid. User should re-register.");
+      logger.warn("FCM token is no longer valid. User should re-register.");
     } else if (error.code === "messaging/invalid-registration-token") {
-      console.warn("⚠️ Invalid FCM token format.");
+      logger.warn("Invalid FCM token format.");
     }
 
     return false;
@@ -126,7 +127,7 @@ const sendFCMToMultipleTokens = async (
   notification: FCMNotificationPayload
 ): Promise<{ successCount: number; failureCount: number }> => {
   if (!fcmTokens.length) {
-    console.warn("⚠️ sendFCMToMultipleTokens called with empty token list");
+    logger.warn("sendFCMToMultipleTokens called with empty token list");
     return { successCount: 0, failureCount: 0 };
   }
 
@@ -174,17 +175,17 @@ const sendFCMToMultipleTokens = async (
       totalSuccess += response.successCount;
       totalFailure += response.failureCount;
 
-      console.log(
-        `📤 Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${response.successCount} sent, ${response.failureCount} failed`
+      logger.info(
+        `Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${response.successCount} sent, ${response.failureCount} failed`
       );
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      console.error(`❌ Batch multicast failed:`, errMsg);
+      logger.error("Batch multicast failed", { error: errMsg });
       totalFailure += batch.length;
     }
   }
 
-  console.log(`📊 Multicast complete: ${totalSuccess} success, ${totalFailure} failed`);
+  logger.info(`Multicast complete: ${totalSuccess} success, ${totalFailure} failed`);
   return { successCount: totalSuccess, failureCount: totalFailure };
 };
 

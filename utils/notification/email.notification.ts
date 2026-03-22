@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
+import { logger } from "../logger";
 
 dotenv.config();
 
@@ -46,8 +47,6 @@ exports.sendEmailNotification = async (
       return true;
     });
   } catch (error: any) {
-    console.error(
-      process.env.NODE_ENV === "development" ? error.message : undefined
-    );
+    logger.error("Email send error", { error: error.message });
   }
 };
