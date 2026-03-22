@@ -70,11 +70,11 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // Start notification worker
-// try {
-//   startNotificationWorker();
-// } catch (err) {
-//   console.error("Failed to start notification worker:", err);
-// }
+try {
+  startNotificationWorker();
+} catch (err) {
+  console.error("Failed to start notification worker:", err);
+}
 
 // Start server
 app.listen(PORT, () => {

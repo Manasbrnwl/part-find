@@ -9,7 +9,11 @@ import {
   handleValidationError,
   asyncHandler,
 } from "../utils/errorHandler";
-import { scheduleJobReminder } from "../queues/notificationQueue";
+import {
+  scheduleJobReminder,
+  queueNewJobNotification,
+  queueNewApplicationNotification,
+} from "../queues/notificationQueue";
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -87,6 +91,30 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
         category_id: parseInt(id),
       })),
     });
+  }
+
+  // Queue FCM notification to all active users with FCM tokens
+  const usersWithTokens = await prisma.user.findMany({
+    where: {
+      is_active: true,
+      fcm_token: { not: null },
+      id: { not: userId }, // Exclude the recruiter who created the post
+    },
+    select: { fcm_token: true },
+  });
+
+  const fcmTokens = usersWithTokens
+    .map((u) => u.fcm_token)
+    .filter((token): token is string => Boolean(token));
+
+  if (fcmTokens.length > 0) {
+    queueNewJobNotification({
+      postId: post.id,
+      postTitle: post.title,
+      companyName: company_name || "A company",
+      location: location || "TBD",
+      fcmTokens,
+    }).catch((err) => console.error("❌ Failed to queue new job notification:", err));
   }
 
   res.status(201).json({
@@ -363,11 +391,17 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
     throw handleValidationError("You have already applied to this post");
   }
 
-  // Get user's FCM token for scheduling notification
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { fcm_token: true },
-  });
+  // Get user's FCM token for scheduling notification and recruiter's token
+  const [applicant, recruiter] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { fcm_token: true, name: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: post.userId },
+      select: { fcm_token: true },
+    }),
+  ]);
 
   const application = await prisma.postApplied.create({
     data: {
@@ -378,15 +412,25 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
   });
 
   // Schedule job reminder notification for 1 day before start
-  if (user?.fcm_token) {
-    await scheduleJobReminder({
+  if (applicant?.fcm_token) {
+    scheduleJobReminder({
       userId,
       postId: id,
       postTitle: post.title,
       startDate: post.startDate,
       location: post.location || "TBD",
-      fcmToken: user.fcm_token,
-    });
+      fcmToken: applicant.fcm_token,
+    }).catch((err) => console.error("❌ Failed to schedule job reminder:", err));
+  }
+
+  // Notify recruiter about the new application
+  if (recruiter?.fcm_token) {
+    queueNewApplicationNotification({
+      postId: id,
+      postTitle: post.title,
+      applicantName: applicant?.name || "A user",
+      recruiterFcmToken: recruiter.fcm_token,
+    }).catch((err) => console.error("❌ Failed to queue application notification:", err));
   }
 
   res.status(201).json({

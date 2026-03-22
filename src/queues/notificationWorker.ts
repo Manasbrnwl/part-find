@@ -4,8 +4,10 @@ import {
     NotificationType,
     JobReminderData,
     RatingNotificationData,
+    NewJobPostedData,
+    NewApplicationData,
 } from "./notificationQueue";
-import { sendFCMNotification } from "../../utils/firebase";
+import { sendFCMNotification, sendFCMToMultipleTokens } from "../../utils/firebase";
 
 let notificationWorker: Worker | null = null;
 
@@ -17,14 +19,6 @@ async function processJobReminder(data: JobReminderData) {
         console.log(`⚠️ No FCM token for user ${data.userId}, skipping notification`);
         return;
     }
-
-    const startDate = new Date(data.startDate);
-    const formattedDate = startDate.toLocaleDateString("en-IN", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-    });
 
     await sendFCMNotification(data.fcmToken, {
         title: "📅 Job Reminder",
@@ -57,6 +51,44 @@ async function processRatingNotification(data: RatingNotificationData) {
     console.log(`✅ Rating notification sent to user ${data.userId}`);
 }
 
+/**
+ * Process new job posted notification — broadcasts to all users with FCM tokens
+ */
+async function processNewJobPosted(data: NewJobPostedData) {
+    if (!data.fcmTokens.length) {
+        console.log(`⚠️ No FCM tokens available, skipping new job notification`);
+        return;
+    }
+
+    await sendFCMToMultipleTokens(data.fcmTokens, {
+        title: "🆕 New Job Posted!",
+        body: `"${data.postTitle}" at ${data.companyName || "a company"} in ${data.location || "TBD"}`,
+        reminderId: data.postId,
+        type: NotificationType.NEW_JOB_POSTED,
+    });
+
+    console.log(`✅ New job notification broadcast to ${data.fcmTokens.length} users`);
+}
+
+/**
+ * Process new application notification — sent to the recruiter
+ */
+async function processNewApplication(data: NewApplicationData) {
+    if (!data.recruiterFcmToken) {
+        console.log(`⚠️ No FCM token for recruiter, skipping application notification`);
+        return;
+    }
+
+    await sendFCMNotification(data.recruiterFcmToken, {
+        title: "📋 New Application!",
+        body: `${data.applicantName} applied for "${data.postTitle}"`,
+        reminderId: data.postId,
+        type: NotificationType.NEW_APPLICATION,
+    });
+
+    console.log(`✅ Application notification sent to recruiter for post ${data.postId}`);
+}
+
 export function startNotificationWorker() {
     if (notificationWorker) return notificationWorker;
 
@@ -75,6 +107,14 @@ export function startNotificationWorker() {
                     case NotificationType.RATING_RECEIVED:
                         await processRatingNotification(job.data as RatingNotificationData);
                         break;
+
+                    case NotificationType.NEW_JOB_POSTED:
+                        await processNewJobPosted(job.data as NewJobPostedData);
+                        break;
+
+                    case NotificationType.NEW_APPLICATION:
+                        await processNewApplication(job.data as NewApplicationData);
+                        break;
         
                     default:
                         console.warn(`⚠️ Unknown notification type: ${job.name}`);
@@ -82,11 +122,11 @@ export function startNotificationWorker() {
             },
             {
                 connection: redisConnection,
-                concurrency: 2,
-                lockDuration: 60000,
-                stalledInterval: 60000,
+                concurrency: 1, // Single worker to minimize Redis polling
+                lockDuration: 300000, // 5 min — generous lock to avoid stale-check overhead
+                stalledInterval: 600000, // 10 min — reduces periodic Redis stale-job checks
                 maxStalledCount: 1,
-                drainDelay: 60,
+                drainDelay: 30000, // 30 seconds — idle poll interval (was 60ms, the main quota killer)
             }
         );
 
@@ -112,8 +152,9 @@ export function startNotificationWorker() {
         });
 
         return notificationWorker;
-    } catch (err: any) {
-        console.error("❌ Failed to start notification worker:", err.message);
+    } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error("❌ Failed to start notification worker:", errMsg);
         return null;
     }
 }
