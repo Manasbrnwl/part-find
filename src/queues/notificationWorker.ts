@@ -2,7 +2,7 @@ import { Worker, Job } from "bullmq";
 import { redisConnection } from "./config";
 import { logger } from "../../utils/logger";
 const { sendEmailNotification } = require("../../utils/notification/email.notification");
-import { lowRatingWarningTemplate, absentWarningTemplate } from "../../utils/notification/emailTemplates";
+import { lowRatingWarningTemplate, absentWarningTemplate, completionCertificateTemplate, generateCertificateHtml } from "../../utils/notification/emailTemplates";
 import { sendFCMNotification, sendFCMToMultipleTokens } from "../../utils/firebase";
 import {
     NotificationType,
@@ -12,6 +12,7 @@ import {
     NewApplicationData,
     LowRatingWarningData,
     AbsentWarningData,
+    CompletionCertificateData,
 } from "./notificationQueue";
 
 let notificationWorker: Worker | null = null;
@@ -136,6 +137,59 @@ async function processAbsentWarning(data: AbsentWarningData) {
     logger.info(`Absent email warning sent to ${data.userEmail}`);
 }
 
+/**
+ * Process completion certificate notification
+ */
+async function processCompletionCertificate(data: CompletionCertificateData) {
+    const issuedAt = new Date(data.issuedAt);
+
+    // 1. Generate PDF
+    const htmlContent = generateCertificateHtml(data.userName, data.postTitle, data.rating, data.recruiterName, issuedAt);
+    const htmlPdfNode = require("html-pdf-node");
+    const pdfBuffer: Buffer = await new Promise((resolve, reject) => {
+        htmlPdfNode.generatePdf(
+            { content: htmlContent },
+            { format: "A4", landscape: true, printBackground: true },
+            (err: Error | null, buffer: Buffer) => {
+                if (err) reject(err);
+                else resolve(buffer);
+            }
+        );
+    });
+
+    // 2. Send FCM push notification
+    if (data.fcmToken) {
+        await sendFCMNotification(data.fcmToken, {
+            title: "🏆 Certificate Earned!",
+            body: `You've earned a certificate for "${data.postTitle}"!`,
+            reminderId: data.userId,
+            type: NotificationType.COMPLETION_CERTIFICATE,
+        });
+        logger.info(`Certificate FCM sent to user ${data.userId}`);
+    }
+
+    // 3. Send email with PDF attachment
+    const { subject, text, html } = completionCertificateTemplate(data.userName, data.postTitle, data.rating, data.recruiterName, issuedAt);
+    const nodemailer = require("nodemailer");
+    const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    });
+    await transporter.sendMail({
+        from: `Part Find <${process.env.EMAIL_USER}>`,
+        to: data.userEmail,
+        subject,
+        text,
+        html,
+        attachments: [{
+            filename: `certificate-${data.postTitle.slice(0, 20).replace(/\s+/g, "-")}.pdf`,
+            content: pdfBuffer,
+            contentType: "application/pdf",
+        }],
+    });
+    logger.info(`Certificate email with PDF sent to ${data.userEmail}`);
+}
+
 export function startNotificationWorker() {
     if (notificationWorker) return notificationWorker;
 
@@ -169,6 +223,10 @@ export function startNotificationWorker() {
                     
                     case NotificationType.ABSENT_WARNING:
                         await processAbsentWarning(job.data as AbsentWarningData);
+                        break;
+
+                    case NotificationType.COMPLETION_CERTIFICATE:
+                        await processCompletionCertificate(job.data as CompletionCertificateData);
                         break;
         
                     default:

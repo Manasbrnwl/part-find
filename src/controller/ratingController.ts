@@ -7,7 +7,7 @@ import {
     handleForbiddenError,
     asyncHandler,
 } from "../utils/errorHandler";
-import { queueRatingNotification, queueLowRatingWarning } from "../queues/notificationQueue";
+import { queueRatingNotification, queueLowRatingWarning, queueCompletionCertificate } from "../queues/notificationQueue";
 
 const prisma = new PrismaClient();
 
@@ -114,6 +114,42 @@ export const createRating = asyncHandler(async (req: Request, res: Response) => 
             recruiterName: recruiter?.name || "A recruiter",
             fcmToken: user.fcm_token,
         });
+    }
+
+    // Issue certificate if rating >= 3 (idempotency: one cert per post+user pair)
+    if (Number(rating) >= 3) {
+        const existing = await prisma.certificate.findUnique({
+            where: { postId_userId: { postId, userId: userId as string } },
+        });
+
+        if (!existing) {
+            const cert = await prisma.certificate.create({
+                data: {
+                    userId: userId as string,
+                    postId,
+                    recruiterId,
+                    rating: Number(rating),
+                },
+            });
+
+            const fullUser = await prisma.user.findUnique({
+                where: { id: userId as string },
+                select: { email: true, name: true, fcm_token: true },
+            });
+
+            if (fullUser?.email) {
+                await queueCompletionCertificate({
+                    userId: userId as string,
+                    userName: fullUser.name || "User",
+                    userEmail: fullUser.email,
+                    postTitle: post.title,
+                    rating: Number(rating),
+                    recruiterName: recruiter?.name || "Recruiter",
+                    issuedAt: cert.issuedAt.toISOString(),
+                    fcmToken: fullUser.fcm_token || undefined,
+                });
+            }
+        }
     }
 
     // Check if user has received more than 5 1-star ratings in the last 30 days

@@ -142,3 +142,89 @@ export function absentWarningTemplate(userName: string, postTitle: string): { su
 
     return { subject, text, html };
 }
+
+/**
+ * Generate the certificate HTML (reused for email body and PDF rendering)
+ */
+export function generateCertificateHtml(userName: string, postTitle: string, rating: number, recruiterName: string, issuedAt: Date): string {
+    const dateStr = issuedAt.toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" });
+    const stars = "⭐".repeat(rating);
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Certificate of Completion</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #f5f0e8; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: 'EB Garamond', Georgia, serif; }
+    .certificate { width: 800px; min-height: 560px; background: #fffdf6; border: 12px double #b59a4a; padding: 48px 64px; position: relative; text-align: center; box-shadow: 0 8px 40px rgba(0,0,0,0.18); }
+    .corner { position: absolute; width: 48px; height: 48px; border-color: #c9a84c; border-style: solid; }
+    .corner.tl { top: 12px; left: 12px; border-width: 3px 0 0 3px; }
+    .corner.tr { top: 12px; right: 12px; border-width: 3px 3px 0 0; }
+    .corner.bl { bottom: 12px; left: 12px; border-width: 0 0 3px 3px; }
+    .corner.br { bottom: 12px; right: 12px; border-width: 0 3px 3px 0; }
+    .brand { font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 4px; color: #b59a4a; text-transform: uppercase; margin-bottom: 20px; }
+    h1 { font-family: 'Cinzel', serif; font-size: 36px; color: #2d2200; letter-spacing: 2px; margin-bottom: 8px; }
+    .subtitle { font-size: 14px; color: #888; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 32px; }
+    .divider { width: 120px; height: 2px; background: linear-gradient(90deg, transparent, #b59a4a, transparent); margin: 0 auto 24px; }
+    .certify-text { font-size: 16px; color: #555; margin-bottom: 16px; font-style: italic; }
+    .recipient { font-family: 'Cinzel', serif; font-size: 32px; color: #1a3a2a; margin-bottom: 24px; border-bottom: 1px solid #c9a84c; display: inline-block; padding-bottom: 4px; }
+    .details { font-size: 16px; color: #444; margin-bottom: 8px; line-height: 1.8; }
+    .rating { font-size: 22px; margin: 16px 0 24px; }
+    .footer-grid { display: flex; justify-content: space-between; margin-top: 40px; align-items: flex-end; }
+    .footer-item { text-align: center; }
+    .footer-label { font-size: 12px; color: #aaa; letter-spacing: 2px; text-transform: uppercase; border-top: 1px solid #c9a84c; padding-top: 6px; margin-top: 8px; width: 160px; }
+    .seal { width: 80px; height: 80px; border: 3px solid #b59a4a; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; font-size: 28px; color: #b59a4a; }
+  </style>
+</head>
+<body>
+  <div class="certificate">
+    <div class="corner tl"></div><div class="corner tr"></div>
+    <div class="corner bl"></div><div class="corner br"></div>
+    <div class="brand">Part Find Platform</div>
+    <h1>Certificate of Completion</h1>
+    <div class="subtitle">Official Recognition</div>
+    <div class="divider"></div>
+    <div class="certify-text">This is to certify that</div>
+    <div class="recipient">${userName}</div>
+    <div class="details">has successfully completed the role for</div>
+    <div class="details"><strong>${postTitle}</strong></div>
+    <div class="rating">${stars}</div>
+    <div class="details">as rated by <strong>${recruiterName}</strong></div>
+    <div class="footer-grid">
+      <div class="footer-item"><div style="font-size:14px;color:#666;">${dateStr}</div><div class="footer-label">Date of Issue</div></div>
+      <div class="seal">✦</div>
+      <div class="footer-item"><div style="font-size:14px;color:#666;">Part Find</div><div class="footer-label">Authorized By</div></div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Completion certificate email template
+ */
+export function completionCertificateTemplate(userName: string, postTitle: string, rating: number, recruiterName: string, issuedAt: Date): { subject: string; text: string; html: string } {
+    const subject = `🏆 Your Certificate of Completion for "${postTitle}"`;
+    const dateStr = issuedAt.toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" });
+
+    const text = `Congratulations ${userName}! You received a ${rating}-star rating from ${recruiterName} for "${postTitle}". Your certificate is attached.`;
+
+    const html = baseLayout(`
+        <h2 style="margin:0 0 16px;color:#059669;font-size:18px;font-weight:700;">🏆 Congratulations, ${userName}!</h2>
+        <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">
+            You've received a <strong>${rating}-star rating</strong> from <strong>${recruiterName}</strong> for:
+        </p>
+        <div style="background:#f0fdf4;border-left:4px solid #059669;padding:16px;margin:20px 0;">
+            <p style="margin:0;color:#065f46;font-size:16px;font-weight:600;">${postTitle}</p>
+        </div>
+        <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">
+            Your <strong>Certificate of Completion</strong> is attached as a PDF. You can also download it anytime from the Part Find app.
+        </p>
+        <p style="margin:0;color:#9ca3af;font-size:12px;text-align:center;">Issued on ${dateStr}</p>
+    `);
+
+    return { subject, text, html };
+}

@@ -9,6 +9,7 @@ export enum NotificationType {
     NEW_APPLICATION = "NEW_APPLICATION",
     LOW_RATING_WARNING = "LOW_RATING_WARNING",
     ABSENT_WARNING = "ABSENT_WARNING",
+    COMPLETION_CERTIFICATE = "COMPLETION_CERTIFICATE",
 }
 
 export interface JobReminderData {
@@ -55,6 +56,17 @@ export interface AbsentWarningData {
     userName: string;
     userEmail: string;
     postTitle: string;
+    fcmToken?: string;
+}
+
+export interface CompletionCertificateData {
+    userId: string;
+    userName: string;
+    userEmail: string;
+    postTitle: string;
+    rating: number;
+    recruiterName: string;
+    issuedAt: string; // ISO string (serialized for queue)
     fcmToken?: string;
 }
 
@@ -181,5 +193,19 @@ export async function queueAbsentWarning(data: AbsentWarningData) {
         }
     );
     logger.info(`Absent warning queued for user ${data.userId}`);
+}
+
+/**
+ * Queue a completion certificate notification for a user
+ */
+export async function queueCompletionCertificate(data: CompletionCertificateData) {
+    await getNotificationQueue().add(
+        NotificationType.COMPLETION_CERTIFICATE,
+        data,
+        {
+            jobId: `cert-${data.userId}-${data.postTitle.slice(0, 20)}-${Date.now()}`,
+        }
+    );
+    logger.info(`Completion certificate queued for user ${data.userId}`);
 }
 

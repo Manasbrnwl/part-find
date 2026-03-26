@@ -23,6 +23,10 @@ tags:
     description: Push notification management (FCM)
   - name: Master
     description: Master data endpoints
+  - name: Ratings
+    description: User rating submission and management
+  - name: Certificates
+    description: User completion certificates
 
 components:
   securitySchemes:
@@ -175,6 +179,26 @@ components:
         reason:
           type: string
         createdAt:
+          type: string
+          format: date-time
+
+    Certificate:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+        postId:
+          type: string
+        recruiterId:
+          type: string
+        rating:
+          type: integer
+          minimum: 3
+          maximum: 5
+        issuedAt:
           type: string
           format: date-time
 
@@ -992,3 +1016,137 @@ paths:
                           type: string
                         description:
                           type: string
+
+  # Rating Routes
+  /rating/{postId}/{userId}:
+    post:
+      tags: [Ratings]
+      summary: Submit a rating for a user (Recruiter only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Post ID for which the rating is being given
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the user being rated
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              properties:
+                rating:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                  description: |
+                    Triggers a low-rating warning if user receives >5 one-star ratings in 30 days.
+                    Issues a completion certificate if rating >= 3.
+                comment:
+                  type: string
+      responses:
+        '201':
+          description: Rating submitted. Certificate issued if rating >= 3.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Validation error
+        '401':
+          description: Unauthorized
+        '409':
+          description: Rating already submitted for this post/user
+
+  # Certificate Routes
+  /certificate/my-certificates:
+    get:
+      tags: [Certificates]
+      summary: Get all certificates earned by the authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of certificates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Certificate'
+                        - type: object
+                          properties:
+                            post:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                title:
+                                  type: string
+                                startDate:
+                                  type: string
+                                  format: date-time
+                                endDate:
+                                  type: string
+                                  format: date-time
+                            recruiter:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                name:
+                                  type: string
+                                recruiter_company_name:
+                                  type: string
+        '401':
+          description: Unauthorized
+
+  /certificate/download/{id}:
+    get:
+      tags: [Certificates]
+      summary: Download a certificate as PDF
+      description: Streams the certificate as a downloadable PDF file.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Certificate ID
+      responses:
+        '200':
+          description: PDF file stream
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - certificate belongs to another user
+        '404':
+          description: Certificate not found
