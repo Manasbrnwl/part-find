@@ -44,6 +44,8 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
           },
         },
       },
+      experience: true,
+      education: true,
     },
   });
 
@@ -67,7 +69,7 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
     message: "Profile fetched successfully",
     data: {
       user: userWithoutPassword,
-      baseUrl: `${req.protocol}://${req.hostname}/images/`,
+      baseUrl: `${req.protocol}://${req.hostname}/images/profile/`,
     },
   });
 });
@@ -146,14 +148,6 @@ export const updateProfile = asyncHandler(
     }
 
     if (req.body.categories) {
-      await prisma.userCategory.deleteMany({
-        where: {
-          user_id: userId,
-        },
-      });
-    }
-
-    if (req.body.categories) {
       let categories = req.body.categories.split(",");
       await prisma.userCategory.createMany({
         data: categories?.map((id: string) => ({
@@ -161,6 +155,67 @@ export const updateProfile = asyncHandler(
           category_id: parseInt(id),
         })),
       });
+    }
+
+    // Update experience
+    if (req.body.experience) {
+      let experienceData = [];
+      try {
+        experienceData = typeof req.body.experience === 'string' 
+          ? JSON.parse(req.body.experience) 
+          : req.body.experience;
+      } catch (e) {
+        throw handleValidationError("Invalid experience data format");
+      }
+
+      await prisma.experience.deleteMany({
+        where: { userId },
+      });
+
+      if (Array.isArray(experienceData) && experienceData.length > 0) {
+        await prisma.experience.createMany({
+          data: experienceData.map((exp: any) => ({
+            userId,
+            company_name: exp.company_name,
+            position: exp.position,
+            location: exp.location,
+            startDate: new Date(exp.startDate),
+            endDate: exp.endDate ? new Date(exp.endDate) : null,
+            description: exp.description,
+            is_current: exp.is_current || false,
+          })),
+        });
+      }
+    }
+
+    // Update education
+    if (req.body.education) {
+      let educationData = [];
+      try {
+        educationData = typeof req.body.education === 'string' 
+          ? JSON.parse(req.body.education) 
+          : req.body.education;
+      } catch (e) {
+        throw handleValidationError("Invalid education data format");
+      }
+
+      await prisma.education.deleteMany({
+        where: { userId },
+      });
+
+      if (Array.isArray(educationData) && educationData.length > 0) {
+        await prisma.education.createMany({
+          data: educationData.map((edu: any) => ({
+            userId,
+            institution_name: edu.institution_name,
+            degree: edu.degree,
+            field_of_study: edu.field_of_study,
+            startDate: new Date(edu.startDate),
+            endDate: edu.endDate ? new Date(edu.endDate) : null,
+            description: edu.description,
+          })),
+        });
+      }
     }
 
     // Return updated user data without password, createdAt, and updatedAt
@@ -279,7 +334,7 @@ export const getRecruiterProfile = asyncHandler(
           industries: user.recruiterIndustries,
           gigTypes: user.recruiterGigTypes,
         },
-        baseUrl: `${req.protocol}://${req.hostname}/images/`,
+        baseUrl: `${req.protocol}://${req.hostname}/images/recruiter/`,
       },
     });
   }

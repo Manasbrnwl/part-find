@@ -19,8 +19,9 @@ const prisma = new PrismaClient();
 
 const files = multer.diskStorage({
   destination: function (req, file, cb) {
-    ensureDirExists("uploads/profile");
-    cb(null, "uploads/profile");
+    const uploadPath = path.join(process.env.UPLOAD_DIR || "uploads", "profile");
+    ensureDirExists(uploadPath);
+    cb(null, uploadPath);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
@@ -31,8 +32,9 @@ const files = multer.diskStorage({
 
 const recruiterFiles = multer.diskStorage({
   destination: function (req, file, cb) {
-    ensureDirExists("uploads/recruiter");
-    cb(null, "uploads/recruiter");
+    const uploadPath = path.join(process.env.UPLOAD_DIR || "uploads", "recruiter");
+    ensureDirExists(uploadPath);
+    cb(null, uploadPath);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);

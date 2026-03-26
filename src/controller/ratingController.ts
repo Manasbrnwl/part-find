@@ -7,7 +7,7 @@ import {
     handleForbiddenError,
     asyncHandler,
 } from "../utils/errorHandler";
-import { queueRatingNotification } from "../queues/notificationQueue";
+import { queueRatingNotification, queueLowRatingWarning } from "../queues/notificationQueue";
 
 const prisma = new PrismaClient();
 
@@ -114,6 +114,48 @@ export const createRating = asyncHandler(async (req: Request, res: Response) => 
             recruiterName: recruiter?.name || "A recruiter",
             fcmToken: user.fcm_token,
         });
+    }
+
+    // Check if user has received more than 5 1-star ratings in the last 30 days
+    if (Number(rating) === 1) {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const oneStarCount = await prisma.rating.count({
+            where: {
+                userId,
+                rating: 1,
+                createdAt: {
+                    gte: thirtyDaysAgo,
+                },
+            },
+        });
+
+        if (oneStarCount > 5) {
+            // Store user id on FlaggedUser table
+            await prisma.flaggedUser.create({
+                data: {
+                    userId,
+                    reason: `Received ${oneStarCount} 1-star ratings in the last 30 days`,
+                },
+            });
+
+            // Fetch user info for warning notification (need email and name)
+            const fullUser = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { email: true, name: true, fcm_token: true },
+            });
+
+            if (fullUser && fullUser.email) {
+                // Queue warning notification (FCM + Email)
+                await queueLowRatingWarning({
+                    userId,
+                    userName: fullUser.name || "User",
+                    userEmail: fullUser.email,
+                    fcmToken: fullUser.fcm_token || undefined,
+                });
+            }
+        }
     }
 
     res.status(201).json({

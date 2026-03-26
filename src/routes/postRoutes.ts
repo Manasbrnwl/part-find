@@ -12,7 +12,8 @@ import {
   recruiterGetPost,
   savePost,
   getSavePosts,
-  getNearbyPosts
+  getNearbyPosts,
+  cancelApplication
 } from "../controller/postController";
 import { authenticate, authorize } from "../middleware/authMiddleware";
 
@@ -33,6 +34,7 @@ router.get("/get-all", authorize(["USER"]), getAllPosts);
 router.get("/:id", authorize(["USER"]), getPostById);
 router.post("/save/:postId", authorize(["USER"]), savePost);
 router.get("/save/get-all", authorize(["USER"]), getSavePosts);
+router.post("/cancel-application/:postId", authorize(["USER"]), cancelApplication);
 
 export default router;
 

@@ -56,8 +56,10 @@ app.use("/notifications", notificationRoutes);
 // Legacy route - consider migrating this to proper controller pattern
 app.use("/seed", require("./routes/user"));
 
-// Fetch image from profile folder
-app.use("/images", express.static("uploads/profile"));
+// Static file serving from external upload directory
+const UPLOAD_DIR = process.env.UPLOAD_DIR || "uploads";
+app.use("/images/profile", express.static(path.join(UPLOAD_DIR, "profile")));
+app.use("/images/recruiter", express.static(path.join(UPLOAD_DIR, "recruiter")));
 
 // Handle 404
 app.use((_req, res) => {

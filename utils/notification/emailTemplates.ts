@@ -76,3 +76,69 @@ export function otpEmailTemplate(otp: string, expiryMinutes: number): { subject:
 
     return { subject, text, html };
 }
+
+/**
+ * Low rating warning email template
+ */
+export function lowRatingWarningTemplate(userName: string): { subject: string; text: string; html: string } {
+    const subject = `⚠️ Important: Warning Regarding Your Recent Ratings on ${BRAND_NAME}`;
+
+    const text = `Hi ${userName}, we've noticed you've received several 1-star ratings recently. Please ensure you follow our community guidelines and provide the best service possible to maintain your profile's standing.`;
+
+    const html = baseLayout(`
+        <h2 style="margin:0 0 16px;color:#dc2626;font-size:18px;font-weight:700;">Account Warning</h2>
+        <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">
+            Hi ${userName},
+        </p>
+        <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">
+            We have noticed that you have received <strong>more than five 1-star ratings</strong> within the past month.
+        </p>
+        <div style="background-color:#fef2f2;border-left:4px solid #dc2626;padding:16px;margin:20px 0;">
+            <p style="margin:0;color:#991b1b;font-size:14px;line-height:1.5;">
+                Multiple low ratings can affect your visibility on the platform and may lead to account review or suspension.
+            </p>
+        </div>
+        <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">
+            We encourage you to review our community guidelines and ensure clear communication with recruiters to improve your future ratings.
+        </p>
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;"/>
+        <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.5;text-align:center;">
+            If you have questions about these ratings, please contact our support team.
+        </p>
+    `);
+
+    return { subject, text, html };
+}
+
+/**
+ * Absent from event warning email template
+ */
+export function absentWarningTemplate(userName: string, postTitle: string): { subject: string; text: string; html: string } {
+    const subject = `⚠️ Important: Warning Regarding Your Absence from "${postTitle}"`;
+
+    const text = `Hi ${userName}, you were marked as not present for the event "${postTitle}" despite your application being accepted. Reliability is a core value of ${BRAND_NAME}, and being absent without notice can affect your profile's standing.`;
+
+    const html = baseLayout(`
+        <h2 style="margin:0 0 16px;color:#dc2626;font-size:18px;font-weight:700;">Attendance Warning</h2>
+        <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">
+            Hi ${userName},
+        </p>
+        <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">
+            You were marked as <strong>Not Present</strong> for the event: <strong>"${postTitle}"</strong>.
+        </p>
+        <div style="background-color:#fef2f2;border-left:4px solid #dc2626;padding:16px;margin:20px 0;">
+            <p style="margin:0;color:#991b1b;font-size:14px;line-height:1.5;">
+                Failing to show up for an event you were accepted for is a violation of our community standards and impacts the recruiter's ability to run their event smoothly.
+            </p>
+        </div>
+        <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">
+            Multiple no-show incidents will lead to account restrictions or permanent suspension from the platform.
+        </p>
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;"/>
+        <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.5;text-align:center;">
+            If there was a mistake or an emergency, please contact the recruiter or our support team immediately.
+        </p>
+    `);
+
+    return { subject, text, html };
+}

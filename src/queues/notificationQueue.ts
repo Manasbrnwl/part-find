@@ -7,6 +7,8 @@ export enum NotificationType {
     RATING_RECEIVED = "RATING_RECEIVED",
     NEW_JOB_POSTED = "NEW_JOB_POSTED",
     NEW_APPLICATION = "NEW_APPLICATION",
+    LOW_RATING_WARNING = "LOW_RATING_WARNING",
+    ABSENT_WARNING = "ABSENT_WARNING",
 }
 
 export interface JobReminderData {
@@ -39,6 +41,21 @@ export interface NewApplicationData {
     postTitle: string;
     applicantName: string;
     recruiterFcmToken: string;
+}
+
+export interface LowRatingWarningData {
+    userId: string;
+    userName: string;
+    userEmail: string;
+    fcmToken?: string;
+}
+
+export interface AbsentWarningData {
+    userId: string;
+    userName: string;
+    userEmail: string;
+    postTitle: string;
+    fcmToken?: string;
 }
 
 // Lazy-initialize queue to avoid opening a Redis connection on module import
@@ -136,5 +153,33 @@ export async function queueNewApplicationNotification(data: NewApplicationData) 
         }
     );
     logger.info("Application notification queued for recruiter");
+}
+
+/**
+ * Queue a low rating warning for a user
+ */
+export async function queueLowRatingWarning(data: LowRatingWarningData) {
+    await getNotificationQueue().add(
+        NotificationType.LOW_RATING_WARNING,
+        data,
+        {
+            jobId: `warning-${data.userId}-${Date.now()}`,
+        }
+    );
+    logger.info(`Low rating warning queued for user ${data.userId}`);
+}
+
+/**
+ * Queue an absent warning for a user
+ */
+export async function queueAbsentWarning(data: AbsentWarningData) {
+    await getNotificationQueue().add(
+        NotificationType.ABSENT_WARNING,
+        data,
+        {
+            jobId: `absent-${data.userId}-${Date.now()}`,
+        }
+    );
+    logger.info(`Absent warning queued for user ${data.userId}`);
 }
 

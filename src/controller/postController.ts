@@ -13,6 +13,7 @@ import {
   scheduleJobReminder,
   queueNewJobNotification,
   queueNewApplicationNotification,
+  queueAbsentWarning,
 } from "../queues/notificationQueue";
 import { logger } from "../../utils/logger";
 
@@ -697,7 +698,37 @@ export const updateUserStatus = asyncHandler(
     const updatedApplication = await prisma.postApplied.update({
       where: { id },
       data: { status },
+      include: {
+        post: {
+          select: { title: true }
+        },
+        user: {
+          select: { email: true, name: true, fcm_token: true }
+        }
+      }
     });
+
+    // If status is NOT_PRESENT, flag the user and send warning
+    if (status === "NOT_PRESENT") {
+      // 1. Store in FlaggedUser table
+      await prisma.flaggedUser.create({
+        data: {
+          userId: updatedApplication.userId,
+          reason: `No-show for event: ${updatedApplication.post.title}`,
+        },
+      });
+
+      // 2. Queue warning notification
+      if (updatedApplication.user.email) {
+        await queueAbsentWarning({
+          userId: updatedApplication.userId,
+          userName: updatedApplication.user.name || "User",
+          userEmail: updatedApplication.user.email,
+          postTitle: updatedApplication.post.title,
+          fcmToken: updatedApplication.user.fcm_token || undefined,
+        });
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -1023,3 +1054,44 @@ export const getNearbyPosts = asyncHandler(
     });
   }
 );
+
+export const cancelApplication = asyncHandler(async (req: Request, res: Response) => {
+  const postId = req.params.postId as string;
+  const { remark } = req.body;
+  const userId = req.userId;
+
+  if (!postId) {
+    throw handleValidationError("Post ID is required");
+  }
+
+  if (!userId) {
+    throw handleValidationError("User ID is required");
+  }
+
+  const application = await prisma.postApplied.findUnique({
+    where: {
+      userId_postId: {
+        userId: userId as string,
+        postId: postId,
+      },
+    },
+  });
+
+  if (!application) {
+    throw handleNotFoundError("Application");
+  }
+
+  const updatedApplication = await prisma.postApplied.update({
+    where: { id: application.id },
+    data: {
+      status: "CANCELLED" as any,
+      remark: remark || "Cancelled by user",
+    },
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Application cancelled successfully",
+    data: updatedApplication,
+  });
+});

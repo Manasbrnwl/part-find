@@ -47,6 +47,9 @@ model User {
   ratingsReceived     Rating[]            @relation("UserRatings")
   ratingsGiven        Rating[]            @relation("RecruiterRatings")
   refreshTokens       RefreshToken[]
+  experience          Experience[]
+  education           Education[]
+  flaggedReports      FlaggedUser[]
 }
 
 model RecruiterIndustry {
@@ -134,6 +137,7 @@ model postApplied {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   status    Status?  @default(PENDING)
+  remark    String?
   post      Post     @relation(fields: [postId], references: [id])
   user      User     @relation(fields: [userId], references: [id])
 
@@ -188,6 +192,8 @@ enum Status {
   PENDING
   APPROVED
   REJECTED
+  CANCELLED
+  NOT_PRESENT
 }
 
 model Rating {
@@ -221,4 +227,41 @@ model RefreshToken {
 
   @@index([userId])
   @@index([token])
+}
+
+model Experience {
+  id           String    @id @default(uuid())
+  userId       String
+  company_name String
+  position     String
+  location     String?
+  startDate    DateTime
+  endDate      DateTime?
+  description  String?
+  is_current   Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Education {
+  id               String    @id @default(uuid())
+  userId           String
+  institution_name String
+  degree           String
+  field_of_study   String?
+  startDate        DateTime
+  endDate          DateTime?
+  description      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model FlaggedUser {
+  id        String   @id @default(uuid())
+  userId    String
+  reason    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

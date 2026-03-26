@@ -50,6 +50,14 @@ components:
           enum: [USER, ADMIN, RECRUITER]
         is_active:
           type: boolean
+        experience:
+          type: array
+          items:
+            $ref: '#/components/schemas/Experience'
+        education:
+          type: array
+          items:
+            $ref: '#/components/schemas/Education'
 
     Post:
       type: object
@@ -106,6 +114,65 @@ components:
           minimum: 1
           maximum: 5
         comment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Experience:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_name:
+          type: string
+        position:
+          type: string
+        location:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        description:
+          type: string
+        is_current:
+          type: boolean
+
+    Education:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        institution_name:
+          type: string
+        degree:
+          type: string
+        field_of_study:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        description:
+          type: string
+
+    FlaggedUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        reason:
           type: string
         createdAt:
           type: string
@@ -366,6 +433,12 @@ paths:
                   items:
                     type: string
                     format: binary
+                experience:
+                  type: string
+                  description: JSON string array of experience objects
+                education:
+                  type: string
+                  description: JSON string array of education objects
       responses:
         '200':
           description: Profile updated
@@ -694,7 +767,7 @@ paths:
               properties:
                 status:
                   type: string
-                  enum: [PENDING, APPROVED, REJECTED]
+                  enum: [PENDING, APPROVED, REJECTED, CANCELLED, NOT_PRESENT]
       responses:
         '200':
           description: Status updated
@@ -720,6 +793,33 @@ paths:
       responses:
         '200':
           description: List of saved posts
+
+  /post/cancel-application/{postId}:
+    post:
+      tags: [Posts]
+      summary: Cancel a job application
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                remark:
+                  type: string
+                  description: Reason for cancellation
+      responses:
+        '200':
+          description: Application cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
 
   # Rating Routes
   /rating/{postId}/{userId}:

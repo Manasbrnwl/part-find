@@ -1,14 +1,18 @@
 import { Worker, Job } from "bullmq";
 import { redisConnection } from "./config";
+import { logger } from "../../utils/logger";
+const { sendEmailNotification } = require("../../utils/notification/email.notification");
+import { lowRatingWarningTemplate, absentWarningTemplate } from "../../utils/notification/emailTemplates";
+import { sendFCMNotification, sendFCMToMultipleTokens } from "../../utils/firebase";
 import {
     NotificationType,
     JobReminderData,
     RatingNotificationData,
     NewJobPostedData,
     NewApplicationData,
+    LowRatingWarningData,
+    AbsentWarningData,
 } from "./notificationQueue";
-import { sendFCMNotification, sendFCMToMultipleTokens } from "../../utils/firebase";
-import { logger } from "../../utils/logger";
 
 let notificationWorker: Worker | null = null;
 
@@ -90,6 +94,48 @@ async function processNewApplication(data: NewApplicationData) {
     logger.info(`Application notification sent to recruiter for post ${data.postId}`);
 }
 
+/**
+ * Process low rating warning notification
+ */
+async function processLowRatingWarning(data: LowRatingWarningData) {
+    // 1. Send FCM Notification if token is available
+    if (data.fcmToken) {
+        await sendFCMNotification(data.fcmToken, {
+            title: "⚠️ Important Account Warning",
+            body: `We've noticed several low ratings on your profile recently. Please check your email for details.`,
+            reminderId: data.userId,
+            type: NotificationType.LOW_RATING_WARNING,
+        });
+        logger.info(`Low rating FCM warning sent to user ${data.userId}`);
+    }
+
+    // 2. Send Email Notification
+    const { subject, text, html } = lowRatingWarningTemplate(data.userName);
+    await sendEmailNotification(data.userEmail, subject, text, html);
+    logger.info(`Low rating email warning sent to ${data.userEmail}`);
+}
+
+/**
+ * Process absent warning notification
+ */
+async function processAbsentWarning(data: AbsentWarningData) {
+    // 1. Send FCM Notification if token is available
+    if (data.fcmToken) {
+        await sendFCMNotification(data.fcmToken, {
+            title: "⚠️ Attendance Warning",
+            body: `You were marked as absent for "${data.postTitle}". This can affect your profile standing.`,
+            reminderId: data.userId,
+            type: NotificationType.ABSENT_WARNING,
+        });
+        logger.info(`Absent FCM warning sent to user ${data.userId}`);
+    }
+
+    // 2. Send Email Notification
+    const { subject, text, html } = absentWarningTemplate(data.userName, data.postTitle);
+    await sendEmailNotification(data.userEmail, subject, text, html);
+    logger.info(`Absent email warning sent to ${data.userEmail}`);
+}
+
 export function startNotificationWorker() {
     if (notificationWorker) return notificationWorker;
 
@@ -115,6 +161,14 @@ export function startNotificationWorker() {
 
                     case NotificationType.NEW_APPLICATION:
                         await processNewApplication(job.data as NewApplicationData);
+                        break;
+                    
+                    case NotificationType.LOW_RATING_WARNING:
+                        await processLowRatingWarning(job.data as LowRatingWarningData);
+                        break;
+                    
+                    case NotificationType.ABSENT_WARNING:
+                        await processAbsentWarning(job.data as AbsentWarningData);
                         break;
         
                     default:
