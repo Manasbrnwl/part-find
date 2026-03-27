@@ -23,8 +23,6 @@ tags:
     description: Push notification management (FCM)
   - name: Master
     description: Master data endpoints
-  - name: Ratings
-    description: User rating submission and management
   - name: Certificates
     description: User completion certificates
 
@@ -167,21 +165,6 @@ components:
         description:
           type: string
 
-    FlaggedUser:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        userId:
-          type: string
-          format: uuid
-        reason:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-
     Certificate:
       type: object
       properties:
@@ -211,17 +194,6 @@ components:
           type: string
         data:
           type: object
-
-    ErrorResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-          default: false
-        message:
-          type: string
-        error:
-          type: string
 
 security:
   - bearerAuth: []
@@ -846,43 +818,6 @@ paths:
                 $ref: '#/components/schemas/SuccessResponse'
 
   # Rating Routes
-  /rating/{postId}/{userId}:
-    post:
-      tags: [Ratings]
-      summary: Rate a user after job completion (Recruiter only)
-      parameters:
-        - name: postId
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: userId
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [rating]
-              properties:
-                rating:
-                  type: integer
-                  minimum: 1
-                  maximum: 5
-                comment:
-                  type: string
-      responses:
-        '201':
-          description: Rating submitted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SuccessResponse'
-
   /rating/user/{userId}:
     get:
       tags: [Ratings]
