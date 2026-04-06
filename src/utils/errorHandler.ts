@@ -177,10 +177,41 @@ export const sendErrorResponse = (res: Response, error: AppError): void => {
 };
 
 /**
+ * Send error details to ntfy.sh for real-time monitoring
+ */
+const sendToNtfy = async (error: any) => {
+  try {
+    const message = `
+⚠️ Controller Error ⚠️
+Message: ${error.message}
+Code: ${error.code || 'N/A'}
+Stack: ${error.stack?.substring(0, 1000)}
+Meta: ${JSON.stringify(error.meta || {}, null, 2)}
+    `.trim();
+
+    await fetch('https://ntfy.sh/part_find_logs', {
+      method: 'POST',
+      body: message,
+      headers: {
+        'Title': 'Part Find API Error',
+        'Priority': 'high',
+        'Tags': 'warning,bug'
+      }
+    });
+  } catch (err) {
+    // Fail silently for ntfy errors to avoid recursive error handling
+    console.error('Failed to send error to ntfy:', err);
+  }
+};
+
+/**
  * Centralized error handler for controllers
  * Usage: handleControllerError(error, res)
  */
 export const handleControllerError = (error: any, res: Response): void => {
+  // Send to ntfy for real-time debugging
+  sendToNtfy(error);
+
   const appError = handlePrismaError(error);
   sendErrorResponse(res, appError);
 };

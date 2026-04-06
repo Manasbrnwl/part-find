@@ -747,7 +747,7 @@ export const recruiterGetPost = asyncHandler(
         ? { lt: new Date() } // completed = endDate in past
         : { gt: new Date() }; // not completed = endDate in future
 
-    const [postCount, posts, postApplicationsCount] = await Promise.all([
+    const [postCount, posts] = await Promise.all([
       prisma.post.count({
         where: {
           userId: req.userId,
@@ -768,20 +768,24 @@ export const recruiterGetPost = asyncHandler(
         },
         orderBy: { createdAt: "desc" },
       }),
-      prisma.postApplied.groupBy({
-        by: ["status"],
-        where: {
-          post: {
-            userId: req.userId,
-            is_active: true,
-            endDate: dateFilter,
-          },
-        },
-        _count: {
-          _all: true,
-        },
-      }),
     ]);
+
+    const postIds = posts.map((p) => p.id);
+
+    // Fetch application counts grouping by status for these specific posts
+    // Note: groupBy with relation filters (like post: { userId: ... }) can cause UNKNOWN_DATABASE_ERROR
+    const postApplicationsCount =
+      postIds.length > 0
+        ? await prisma.postApplied.groupBy({
+            by: ["status"],
+            where: {
+              postId: { in: postIds },
+            },
+            _count: {
+              _all: true,
+            },
+          })
+        : [];
 
     const postsWithCount = posts.map(({ _count, ...rest }) => ({
       ...rest,
