@@ -183,7 +183,7 @@ export function generateCertificateHtml(userName: string, postTitle: string, rat
   <div class="certificate">
     <div class="corner tl"></div><div class="corner tr"></div>
     <div class="corner bl"></div><div class="corner br"></div>
-    <div class="brand">Part Find Platform</div>
+    <div class="brand">Part Find</div>
     <h1>Certificate of Completion</h1>
     <div class="subtitle">Official Recognition</div>
     <div class="divider"></div>

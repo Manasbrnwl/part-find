@@ -31,7 +31,7 @@ app.use(morgan("dev", { stream: morganStream }));
 try {
   const swaggerPath = path.join(process.cwd(), 'swagger.yml');
   const swaggerDoc = YAML.load(swaggerPath);
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
+  app.use('/api/v1/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
 } catch (error) {
   logger.error("Failed to load swagger documentation", { error });
 }
@@ -42,26 +42,26 @@ app.get("/", (_req, res) => {
 });
 
 // Auth routes
-app.use("/auth", authRoutes);
+app.use("/api/v1/auth", authRoutes);
 // User routes
-app.use("/users", userRoutes);
+app.use("/api/v1/users", userRoutes);
 // Post routes
-app.use("/post", postRoutes);
+app.use("/api/v1/post", postRoutes);
 // Master routes
-app.use("/master", masterRoutes);
+app.use("/api/v1/master", masterRoutes);
 // Rating routes
-app.use("/rating", ratingRoutes);
+app.use("/api/v1/rating", ratingRoutes);
 // Notification routes
-app.use("/notifications", notificationRoutes);
-app.use("/certificate", certificateRoutes);
+app.use("/api/v1/notifications", notificationRoutes);
+app.use("/api/v1/certificate", certificateRoutes);
 
 // Legacy route - consider migrating this to proper controller pattern
-app.use("/seed", require("./routes/user"));
+app.use("/api/v1/seed", require("./routes/user"));
 
 // Static file serving from external upload directory
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "uploads";
-app.use("/images/profile", express.static(path.join(UPLOAD_DIR, "profile")));
-app.use("/images/recruiter", express.static(path.join(UPLOAD_DIR, "recruiter")));
+app.use("/api/v1/images/profile", express.static(path.join(UPLOAD_DIR, "profile")));
+app.use("/api/v1/images/recruiter", express.static(path.join(UPLOAD_DIR, "recruiter")));
 
 // Handle 404
 app.use((_req, res) => {

@@ -159,13 +159,31 @@ export const updateProfile = asyncHandler(
 
     // Update experience
     if (req.body.experience) {
-      let experienceData = [];
-      try {
-        experienceData = typeof req.body.experience === 'string' 
-          ? JSON.parse(req.body.experience) 
-          : req.body.experience;
-      } catch (e) {
-        throw handleValidationError("Invalid experience data format");
+      let experienceData: any[] = [];
+      const expInput = req.body.experience;
+
+      if (typeof expInput === "string") {
+        const trimmedInput = expInput.trim();
+        // Check if it looks like a JSON array/object
+        if (trimmedInput.startsWith("[") || trimmedInput.startsWith("{")) {
+          try {
+            experienceData = JSON.parse(trimmedInput);
+          } catch (e) {
+            // Fallback to CSV if JSON parsing fails
+            experienceData = trimmedInput
+              .split(",")
+              .filter((name) => name.trim() !== "")
+              .map((name) => ({ company_name: name.trim() }));
+          }
+        } else {
+          // Plain comma-separated format
+          experienceData = trimmedInput
+            .split(",")
+            .filter((name) => name.trim() !== "")
+            .map((name) => ({ company_name: name.trim() }));
+        }
+      } else if (Array.isArray(expInput)) {
+        experienceData = expInput;
       }
 
       await prisma.experience.deleteMany({
@@ -176,12 +194,12 @@ export const updateProfile = asyncHandler(
         await prisma.experience.createMany({
           data: experienceData.map((exp: any) => ({
             userId,
-            company_name: exp.company_name,
-            position: exp.position,
-            location: exp.location,
-            startDate: new Date(exp.startDate),
+            company_name: exp.company_name || "Unknown Company",
+            position: exp.position || "Work Experience",
+            location: exp.location || null,
+            startDate: exp.startDate ? new Date(exp.startDate) : new Date(),
             endDate: exp.endDate ? new Date(exp.endDate) : null,
-            description: exp.description,
+            description: exp.description || null,
             is_current: exp.is_current || false,
           })),
         });

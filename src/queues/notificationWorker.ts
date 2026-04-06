@@ -253,10 +253,11 @@ export function startNotificationWorker() {
         });
 
         notificationWorker.on("error", (err) => {
-            if (err.message.includes("max requests limit exceeded")) {
+            const errorMsg = err.message || (typeof err === 'string' ? err : JSON.stringify(err));
+            if (errorMsg.includes("max requests limit exceeded")) {
                 logger.warn("Worker standby: Redis limit reached.");
             } else {
-                logger.error("Worker error", { error: err.message });
+                logger.error("Worker error", { error: errorMsg, details: err });
             }
         });
 
