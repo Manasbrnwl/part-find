@@ -47,11 +47,11 @@ model User {
   ratingsReceived     Rating[]            @relation("UserRatings")
   ratingsGiven        Rating[]            @relation("RecruiterRatings")
   refreshTokens       RefreshToken[]
-  experience          Experience[]
-  education           Education[]
+  experience          String[]            @default([])
+  education           String[]            @default([])
   flaggedReports      FlaggedUser[]
-  certificates        Certificate[]  @relation("UserCertificates")
-  issuedCertificates  Certificate[]  @relation("RecruiterCertificates")
+  certificates        Certificate[]       @relation("UserCertificates")
+  issuedCertificates  Certificate[]       @relation("RecruiterCertificates")
 }
 
 model RecruiterIndustry {
@@ -230,35 +230,6 @@ model RefreshToken {
 
   @@index([userId])
   @@index([token])
-}
-
-model Experience {
-  id           String    @id @default(uuid())
-  userId       String
-  company_name String
-  position     String
-  location     String?
-  startDate    DateTime
-  endDate      DateTime?
-  description  String?
-  is_current   Boolean   @default(false)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model Education {
-  id               String    @id @default(uuid())
-  userId           String
-  institution_name String
-  degree           String
-  field_of_study   String?
-  startDate        DateTime
-  endDate          DateTime?
-  description      String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model FlaggedUser {

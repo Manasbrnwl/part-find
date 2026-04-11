@@ -44,8 +44,6 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
           },
         },
       },
-      experience: true,
-      education: true,
     },
   });
 
@@ -105,6 +103,30 @@ export const updateProfile = asyncHandler(
       imageId,
     } = req.body;
 
+    const parseToArray = (input: any): string[] | undefined => {
+      if (!input) return undefined;
+      if (Array.isArray(input)) return input.filter((item) => typeof item === 'string');
+      if (typeof input === "string") {
+        const trimmed = input.trim();
+        if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+           try {
+             const parsed = JSON.parse(trimmed);
+             if (Array.isArray(parsed)) {
+               return parsed.map((item: any) => {
+                 if (typeof item === 'string') return item;
+                 return item.company_name || item.institution_name || '';
+               }).filter((i) => i !== '');
+             }
+           } catch(e) {}
+        }
+        return trimmed.split(",").map((i) => i.trim()).filter((i) => i !== "");
+      }
+      return undefined;
+    };
+
+    const parsedExperience = parseToArray(req.body.experience);
+    const parsedEducation = parseToArray(req.body.education);
+
     // Update user data
     const updatedUser = await prisma.user.update({
       where: { id: userId },
@@ -121,6 +143,8 @@ export const updateProfile = asyncHandler(
         gender: gender || user.gender,
         country: country || user.country,
         english_level: english_level || user.english_level,
+        ...(parsedExperience !== undefined && { experience: parsedExperience }),
+        ...(parsedEducation !== undefined && { education: parsedEducation })
       },
     });
 
@@ -157,84 +181,6 @@ export const updateProfile = asyncHandler(
       });
     }
 
-    // Update experience
-    if (req.body.experience) {
-      let experienceData: any[] = [];
-      const expInput = req.body.experience;
-
-      if (typeof expInput === "string") {
-        const trimmedInput = expInput.trim();
-        // Check if it looks like a JSON array/object
-        if (trimmedInput.startsWith("[") || trimmedInput.startsWith("{")) {
-          try {
-            experienceData = JSON.parse(trimmedInput);
-          } catch (e) {
-            // Fallback to CSV if JSON parsing fails
-            experienceData = trimmedInput
-              .split(",")
-              .filter((name) => name.trim() !== "")
-              .map((name) => ({ company_name: name.trim() }));
-          }
-        } else {
-          // Plain comma-separated format
-          experienceData = trimmedInput
-            .split(",")
-            .filter((name) => name.trim() !== "")
-            .map((name) => ({ company_name: name.trim() }));
-        }
-      } else if (Array.isArray(expInput)) {
-        experienceData = expInput;
-      }
-
-      await prisma.experience.deleteMany({
-        where: { userId },
-      });
-
-      if (Array.isArray(experienceData) && experienceData.length > 0) {
-        await prisma.experience.createMany({
-          data: experienceData.map((exp: any) => ({
-            userId,
-            company_name: exp.company_name || "Unknown Company",
-            position: exp.position || "Work Experience",
-            location: exp.location || null,
-            startDate: exp.startDate ? new Date(exp.startDate) : new Date(),
-            endDate: exp.endDate ? new Date(exp.endDate) : null,
-            description: exp.description || null,
-            is_current: exp.is_current || false,
-          })),
-        });
-      }
-    }
-
-    // Update education
-    if (req.body.education) {
-      let educationData = [];
-      try {
-        educationData = typeof req.body.education === 'string' 
-          ? JSON.parse(req.body.education) 
-          : req.body.education;
-      } catch (e) {
-        throw handleValidationError("Invalid education data format");
-      }
-
-      await prisma.education.deleteMany({
-        where: { userId },
-      });
-
-      if (Array.isArray(educationData) && educationData.length > 0) {
-        await prisma.education.createMany({
-          data: educationData.map((edu: any) => ({
-            userId,
-            institution_name: edu.institution_name,
-            degree: edu.degree,
-            field_of_study: edu.field_of_study,
-            startDate: new Date(edu.startDate),
-            endDate: edu.endDate ? new Date(edu.endDate) : null,
-            description: edu.description,
-          })),
-        });
-      }
-    }
 
     // Return updated user data without password, createdAt, and updatedAt
     const {
