@@ -133,6 +133,7 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
       userId: user?.id,
       profile: user?.userImages,
       isNewUser: !user?.name,
+      baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/profile/` : `${req.protocol}://${req.hostname}/api/v1/images/profile/`,
     },
   });
 });
@@ -220,6 +221,7 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
       accessToken,
       refreshToken,
       isNewUser,
+      baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/profile/` : `${req.protocol}://${req.hostname}/api/v1/images/profile/`,
     },
   });
 });

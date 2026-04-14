@@ -326,5 +326,6 @@ export const getJobRatings = asyncHandler(async (req: Request, res: Response) =>
         success: true,
         message: "Job ratings fetched successfully",
         data: ratings,
+        baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/profile/` : `${req.protocol}://${req.hostname}/api/v1/images/profile/`,
     });
 });

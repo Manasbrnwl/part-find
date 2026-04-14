@@ -10,6 +10,7 @@ import masterRoutes from "./routes/masterRoutes";
 import ratingRoutes from "./routes/ratingRoutes";
 import notificationRoutes from "./routes/notificationRoutes";
 import certificateRoutes from "./routes/certificateRoutes";
+import versionRoutes from "./routes/versionRoutes";
 import { startNotificationWorker } from "./queues/notificationWorker";
 import { logger, morganStream } from "../utils/logger";
 import swaggerUi from 'swagger-ui-express';
@@ -54,6 +55,7 @@ app.use("/api/v1/rating", ratingRoutes);
 // Notification routes
 app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/certificate", certificateRoutes);
+app.use("/api/v1/version", versionRoutes);
 
 // Legacy route - consider migrating this to proper controller pattern
 app.use("/api/v1/seed", require("./routes/user"));

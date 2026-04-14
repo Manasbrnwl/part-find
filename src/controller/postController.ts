@@ -245,7 +245,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
   const [posts, total] = await Promise.all([
     prisma.post.findMany({
       where: {
-        endDate: { gt: new Date() },
+        startDate: { gt: new Date() },
         is_active: true,
       },
       select: {
@@ -297,7 +297,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
     }),
     prisma.post.count({
       where: {
-        endDate: { gt: new Date() },
+        startDate: { gt: new Date() },
         is_active: true,
       },
     }),
@@ -554,6 +554,8 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
             address: true,
             state: true,
             country: true,
+            experience: true,
+            education: true,
             userImages: {
               select: {
                 image: true,
@@ -649,6 +651,7 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
       totalPages: Math.ceil(total / pageSize),
       currentPage: pageNumber,
       totalApplications: total,
+      baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/profile/` : `${req.protocol}://${req.hostname}/api/v1/images/profile/`,
     },
   });
 });

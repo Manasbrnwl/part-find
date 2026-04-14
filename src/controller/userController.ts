@@ -67,7 +67,7 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
     message: "Profile fetched successfully",
     data: {
       user: userWithoutPassword,
-      baseUrl: `${req.protocol}://${req.hostname}/images/profile/`,
+      baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/profile/` : `${req.protocol}://${req.hostname}/api/v1/images/profile/`,
     },
   });
 });
@@ -124,8 +124,22 @@ export const updateProfile = asyncHandler(
       return undefined;
     };
 
+    const parseToJsonArray = (input: any): any[] | undefined => {
+      if (!input) return undefined;
+      if (Array.isArray(input)) return input;
+      if (typeof input === "string") {
+        try {
+          const parsed = JSON.parse(input);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          return undefined; // if not valid JSON, we cannot cleanly interpret the array of objects securely
+        }
+      }
+      return undefined;
+    };
+
     const parsedExperience = parseToArray(req.body.experience);
-    const parsedEducation = parseToArray(req.body.education);
+    const parsedEducation = parseToJsonArray(req.body.education);
 
     // Update user data
     const updatedUser = await prisma.user.update({
@@ -235,7 +249,7 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
     message: "Users fetched successfully",
     data: {
       users,
-      baseUrl: `${req.protocol}://${req.host}/images/`,
+      baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/profile/` : `${req.protocol}://${req.hostname}/api/v1/images/profile/`,
     },
   });
 });
@@ -298,7 +312,7 @@ export const getRecruiterProfile = asyncHandler(
           industries: user.recruiterIndustries,
           gigTypes: user.recruiterGigTypes,
         },
-        baseUrl: `${req.protocol}://${req.hostname}/images/recruiter/`,
+        baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/recruiter/` : `${req.protocol}://${req.hostname}/api/v1/images/recruiter/`,
       },
     });
   }

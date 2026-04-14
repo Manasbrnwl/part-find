@@ -48,7 +48,7 @@ model User {
   ratingsGiven        Rating[]            @relation("RecruiterRatings")
   refreshTokens       RefreshToken[]
   experience          String[]            @default([])
-  education           String[]            @default([])
+  education           Json                @default("[]")
   flaggedReports      FlaggedUser[]
   certificates        Certificate[]       @relation("UserCertificates")
   issuedCertificates  Certificate[]       @relation("RecruiterCertificates")
@@ -253,4 +253,15 @@ model Certificate {
   recruiter User @relation("RecruiterCertificates", fields: [recruiterId], references: [id], onDelete: Cascade)
 
   @@unique([postId, userId], map: "certificate_post_user_unique")
+}
+
+model AppVersion {
+  id           String   @id @default(uuid())
+  version      String
+  buildNumber  Int      @default(1)
+  platform     String   @default("android")
+  forceUpdate  Boolean  @default(false)
+  message      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
