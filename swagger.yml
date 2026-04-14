@@ -55,11 +55,18 @@ components:
         experience:
           type: array
           items:
-            $ref: '#/components/schemas/Experience'
+            type: string
         education:
           type: array
           items:
-            $ref: '#/components/schemas/Education'
+            type: object
+            properties:
+              institution_name: { type: string }
+              degree: { type: string }
+              field_of_study: { type: string }
+              startDate: { type: string, format: date-time }
+              endDate: { type: string, format: date-time }
+              description: { type: string }
 
     Post:
       type: object
@@ -121,49 +128,28 @@ components:
           type: string
           format: date-time
 
-    Experience:
+    AppVersion:
       type: object
       properties:
         id:
           type: string
           format: uuid
-        company_name:
+        version:
           type: string
-        position:
+        buildNumber:
+          type: integer
+        platform:
           type: string
-        location:
-          type: string
-        startDate:
-          type: string
-          format: date-time
-        endDate:
-          type: string
-          format: date-time
-        description:
-          type: string
-        is_current:
+        forceUpdate:
           type: boolean
-
-    Education:
-      type: object
-      properties:
-        id:
+        message:
           type: string
-          format: uuid
-        institution_name:
-          type: string
-        degree:
-          type: string
-        field_of_study:
-          type: string
-        startDate:
+        createdAt:
           type: string
           format: date-time
-        endDate:
+        updatedAt:
           type: string
           format: date-time
-        description:
-          type: string
 
     Certificate:
       type: object
@@ -199,6 +185,34 @@ security:
   - bearerAuth: []
 
 paths:
+  # App Configuration
+  /version:
+    get:
+      tags: [Master]
+      summary: Get application version configuration
+      security: []
+      parameters:
+        - in: query
+          name: platform
+          schema:
+            type: string
+            default: android
+          description: Platform to check version for
+      responses:
+        '200':
+          description: Version config successfully fetched
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/AppVersion'
+
   # Auth Routes
   /auth/request-otp:
     post:

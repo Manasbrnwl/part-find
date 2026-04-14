@@ -126,15 +126,42 @@ export const updateProfile = asyncHandler(
 
     const parseToJsonArray = (input: any): any[] | undefined => {
       if (!input) return undefined;
-      if (Array.isArray(input)) return input;
+
+      const tryParseLoose = (str: string) => {
+        try {
+          return JSON.parse(str);
+        } catch (e) {
+          // Attempt to parse loose unquoted quasi-JSON strings like "{degree: 12th Pass, institution_name: du}"
+          const trimmed = str.trim();
+          if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+             const inner = trimmed.slice(1, -1);
+             const obj: any = {};
+             inner.split(',').forEach(pair => {
+                const [key, ...rest] = pair.split(':');
+                if (key && rest.length > 0) {
+                   obj[key.trim()] = rest.join(':').trim();
+                }
+             });
+             return Object.keys(obj).length > 0 ? obj : str;
+          }
+          return str;
+        }
+      };
+
+      if (Array.isArray(input)) {
+        return input.map(item => (typeof item === 'string' ? tryParseLoose(item) : item));
+      }
+
       if (typeof input === "string") {
         try {
           const parsed = JSON.parse(input);
-          return Array.isArray(parsed) ? parsed : [];
+          return Array.isArray(parsed) ? parsed : [parsed];
         } catch (e) {
-          return undefined; // if not valid JSON, we cannot cleanly interpret the array of objects securely
+          const loose = tryParseLoose(input);
+          return (typeof loose === 'object' && loose !== null) ? [loose] : undefined;
         }
       }
+      
       return undefined;
     };
 
