@@ -8,6 +8,7 @@ import {
   getRecruiterProfile,
   updateRecruiterProfile,
   updateFcmToken,
+  deleteUserImage,
 } from "../controller/userController";
 import multer from "multer";
 import sharp from "sharp";
@@ -110,5 +111,8 @@ router.get("/", authorize(["ADMIN"]), getAllUsers);
 
 // FCM token management
 router.put("/fcm-token", updateFcmToken);
+
+// User image management
+router.delete("/images/:id", deleteUserImage);
 
 export default router;
