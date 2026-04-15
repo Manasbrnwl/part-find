@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { Request, Response } from "express";
 import { asyncHandler, handleNotFoundError, handleForbiddenError } from "../utils/errorHandler";
-import { generateCertificateHtml } from "../../utils/notification/emailTemplates";
+import { renderCertificateImage } from "../../utils/certificateImage";
 
 const prisma = new PrismaClient();
 
@@ -30,7 +30,7 @@ export const getUserCertificates = asyncHandler(async (req: Request, res: Respon
 
 /**
  * GET /certificate/download/:id
- * Streams a PDF certificate for the given certificate ID.
+ * Streams a PNG certificate image for the given certificate ID.
  */
 export const downloadCertificate = asyncHandler(async (req: Request, res: Response) => {
     const userId = req.userId as string;
@@ -54,7 +54,7 @@ export const downloadCertificate = asyncHandler(async (req: Request, res: Respon
         throw handleForbiddenError("You do not have access to this certificate");
     }
 
-    const html = generateCertificateHtml(
+    const pngBuffer = await renderCertificateImage(
         certificate.user.name || "User",
         certificate.post.title,
         certificate.rating,
@@ -62,25 +62,9 @@ export const downloadCertificate = asyncHandler(async (req: Request, res: Respon
         certificate.issuedAt
     );
 
-    const htmlPdfNode = require("html-pdf-node");
-    const pdfBuffer: Buffer = await new Promise((resolve, reject) => {
-        htmlPdfNode.generatePdf(
-            { content: html },
-            { 
-                format: "A4", 
-                landscape: true, 
-                printBackground: true,
-                args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"] 
-            },
-            (err: Error | null, buffer: Buffer) => {
-                if (err) reject(err);
-                else resolve(buffer);
-            }
-        );
-    });
-
-    const filename = `certificate-${certificate.post.title.slice(0, 30).replace(/\s+/g, "-")}.pdf`;
-    res.setHeader("Content-Type", "application/pdf");
+    const filename = `certificate-${certificate.post.title.slice(0, 30).replace(/\s+/g, "-")}.png`;
+    res.setHeader("Content-Type", "image/png");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.send(pdfBuffer);
+    res.send(pngBuffer);
 });
+
