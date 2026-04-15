@@ -29,6 +29,7 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
     where: { id: userId },
     include: {
       userImages: {
+        where: { is_deleted: false },
         select: {
           id: true,
           image: true,
@@ -259,6 +260,7 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
       createdAt: true,
       updatedAt: true,
       userImages: {
+        where: { is_deleted: false },
         select: {
           id: true,
           image: true,
@@ -573,3 +575,37 @@ export const updateFcmToken = asyncHandler(async (req: Request, res: Response) =
 });
 
 
+/**
+ * DELETE /users/images/:id
+ * Soft delete a user image
+ */
+export const deleteUserImage = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId;
+  const imageId = req.params.id as string;
+
+  if (!userId) {
+    throw handleAuthorizationError("User ID is required");
+  }
+
+  const image = await prisma.images.findUnique({
+    where: { id: imageId },
+  });
+
+  if (!image) {
+    throw handleNotFoundError("Image");
+  }
+
+  if (image.userId !== userId) {
+    throw handleAuthorizationError("You are not authorized to delete this image");
+  }
+
+  await prisma.images.update({
+    where: { id: imageId },
+    data: { is_deleted: true },
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Image deleted successfully",
+  });
+});

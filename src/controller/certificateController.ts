@@ -66,7 +66,12 @@ export const downloadCertificate = asyncHandler(async (req: Request, res: Respon
     const pdfBuffer: Buffer = await new Promise((resolve, reject) => {
         htmlPdfNode.generatePdf(
             { content: html },
-            { format: "A4", landscape: true, printBackground: true },
+            { 
+                format: "A4", 
+                landscape: true, 
+                printBackground: true,
+                args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"] 
+            },
             (err: Error | null, buffer: Buffer) => {
                 if (err) reject(err);
                 else resolve(buffer);

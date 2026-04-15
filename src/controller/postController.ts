@@ -557,6 +557,7 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
             experience: true,
             education: true,
             userImages: {
+              where: { is_deleted: false },
               select: {
                 image: true,
               },

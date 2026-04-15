@@ -54,6 +54,7 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
       email: true,
       name: true,
       userImages: {
+        where: { is_deleted: false },
         select: {
           image: true,
         },
@@ -99,6 +100,7 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
         email: true,
         name: true,
         userImages: {
+          where: { is_deleted: false },
           select: {
             image: true,
           },
@@ -193,11 +195,12 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
   // Update user
   const updatedUser = await prisma.user.update({
     include: {
-      userImages: {
-        select: {
-          image: true,
-        },
+    userImages: {
+      where: { is_deleted: false },
+      select: {
+        image: true,
       },
+    },
     },
     where: { id: user.id },
     data: updateData,
