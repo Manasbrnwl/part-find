@@ -95,11 +95,12 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
     });
   }
 
-  // Queue FCM notification to all active users with FCM tokens
+  // Queue FCM notification to all active users with FCM tokens and role USER
   const usersWithTokens = await prisma.user.findMany({
     where: {
       is_active: true,
       fcm_token: { not: null },
+      role: "USER",
       id: { not: userId }, // Exclude the recruiter who created the post
     },
     select: { fcm_token: true },
