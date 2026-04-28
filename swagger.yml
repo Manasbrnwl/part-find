@@ -807,7 +807,7 @@ paths:
   /post/save/{postId}:
     post:
       tags: [Posts]
-      summary: Save/unsave a post
+      summary: Save a post
       parameters:
         - name: postId
           in: path
@@ -816,7 +816,21 @@ paths:
             type: string
       responses:
         '200':
-          description: Post saved/unsaved
+          description: Post saved
+
+  /post/unsave/{postId}:
+    post:
+      tags: [Posts]
+      summary: Un-save a post
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Post unsaved
 
   /post/save/get-all:
     get:
@@ -939,6 +953,107 @@ paths:
       responses:
         '200':
           description: Job ratings
+
+  /rating/recruiter/{postId}:
+    post:
+      tags: [Ratings]
+      summary: Submit a rating for a recruiter (User only)
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              properties:
+                rating:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                comment:
+                  type: string
+      responses:
+        '201':
+          description: Recruiter rating submitted
+
+  /rating/recruiter/{recruiterId}:
+    get:
+      tags: [Ratings]
+      summary: Get all ratings for a recruiter
+      parameters:
+        - name: recruiterId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Recruiter ratings with pagination
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      ratings:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RecruiterRating'
+                      totalPages:
+                        type: integer
+                      currentPage:
+                        type: integer
+                      totalRatings:
+                        type: integer
+
+  /rating/recruiter/average/{recruiterId}:
+    get:
+      tags: [Ratings]
+      summary: Get average rating for a recruiter
+      parameters:
+        - name: recruiterId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Recruiter average rating
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      averageRating:
+                        type: number
+                      totalRatings:
+                        type: integer
 
   # Notification Routes
   /notifications/test:
