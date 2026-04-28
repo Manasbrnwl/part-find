@@ -1104,3 +1104,37 @@ export const cancelApplication = asyncHandler(async (req: Request, res: Response
     data: updatedApplication,
   });
 });
+
+export const unsavePost = asyncHandler(async (req: Request, res: Response) => {
+  const postId = req.params.postId as string;
+
+  if (!postId) {
+    throw handleValidationError("Post ID is required");
+  }
+
+  if (!req.userId) {
+    throw handleValidationError("User ID is required");
+  }
+
+  const existingSave = await prisma.savePosts.findFirst({
+    where: {
+      userId: req.userId,
+      postId: postId,
+    },
+  });
+
+  if (!existingSave) {
+    throw handleNotFoundError("Saved post entry");
+  }
+
+  await prisma.savePosts.delete({
+    where: {
+      id: existingSave.id,
+    },
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Post unsaved successfully",
+  });
+});

@@ -46,6 +46,8 @@ model User {
   recruiterGigTypes   RecruiterGigType[]  @relation("UserToGigTypes")
   ratingsReceived     Rating[]            @relation("UserRatings")
   ratingsGiven        Rating[]            @relation("RecruiterRatings")
+  recruiterRatingsReceived RecruiterRating[] @relation("RecruiterReceivedRatings")
+  recruiterRatingsGiven    RecruiterRating[] @relation("UserRecruiterRatings")
   refreshTokens       RefreshToken[]
   experience          String[]            @default([])
   education           Json                @default("[]")
@@ -128,6 +130,7 @@ model Post {
   comments       postApplied[]
   savePosts      savePosts[]
   ratings        Rating[]
+  recruiterRatings RecruiterRating[]
   certificates   Certificate[]
 
   @@unique([userId, title, startDate], map: "post_unique")
@@ -215,6 +218,23 @@ model Rating {
   user      User @relation("UserRatings", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([postId, userId], map: "rating_post_user_unique") // One rating per user per job
+}
+
+model RecruiterRating {
+  id          String   @id @default(uuid())
+  postId      String
+  userId      String   // The user giving the rating
+  recruiterId String   // The recruiter being rated
+  rating      Int      // 1-5 stars
+  comment     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  post      Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User @relation("UserRecruiterRatings", fields: [userId], references: [id], onDelete: Cascade)
+  recruiter User @relation("RecruiterReceivedRatings", fields: [recruiterId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId], map: "recruiter_rating_post_user_unique") // One rating per user per job
 }
 
 model RefreshToken {

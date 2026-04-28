@@ -329,3 +329,158 @@ export const getJobRatings = asyncHandler(async (req: Request, res: Response) =>
         baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/profile/` : `${req.protocol}://${req.hostname}/api/v1/images/profile/`,
     });
 });
+
+/**
+ * Create a rating for a recruiter after job completion
+ * Only approved applicants can rate the recruiter
+ */
+export const createRecruiterRating = asyncHandler(async (req: Request, res: Response) => {
+    const postId = req.params.postId as string;
+    const userId = req.userId; // The user (applicant) giving the rating
+    const { rating, comment } = req.body;
+
+    if (!userId) {
+        throw handleValidationError("User ID is required");
+    }
+
+    if (!postId) {
+        throw handleValidationError("Post ID is required");
+    }
+
+    if (!rating || rating < 1 || rating > 5) {
+        throw handleValidationError("Rating must be between 1 and 5");
+    }
+
+    // Verify the post exists
+    const post = await prisma.post.findUnique({
+        where: { id: postId },
+        select: {
+            id: true,
+            userId: true, // This is the recruiterId
+            title: true,
+            endDate: true,
+        },
+    });
+
+    if (!post) {
+        throw handleNotFoundError("Post");
+    }
+
+    // Verify the user applied to this post and was approved
+    const application = await prisma.postApplied.findFirst({
+        where: {
+            postId,
+            userId,
+            status: "APPROVED",
+        },
+    });
+
+    if (!application) {
+        throw handleValidationError("You must be an approved applicant to rate the recruiter");
+    }
+
+    // Check if rating already exists
+    const existingRating = await prisma.recruiterRating.findUnique({
+        where: {
+            postId_userId: { postId, userId },
+        },
+    });
+
+    if (existingRating) {
+        throw handleValidationError("You have already rated this recruiter for this job");
+    }
+
+    // Create the rating
+    const newRating = await prisma.recruiterRating.create({
+        data: {
+            postId,
+            userId,
+            recruiterId: post.userId,
+            rating: Number(rating),
+            comment: comment || null,
+        },
+    });
+
+    res.status(201).json({
+        success: true,
+        message: "Recruiter rating submitted successfully",
+        data: newRating,
+    });
+});
+
+/**
+ * Get all ratings for a recruiter
+ */
+export const getRecruiterRatings = asyncHandler(async (req: Request, res: Response) => {
+    const recruiterId = req.params.recruiterId as string;
+    const { page = 1, limit = 10 } = req.query;
+
+    if (!recruiterId) {
+        throw handleValidationError("Recruiter ID is required");
+    }
+
+    const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
+    const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
+    const skip = (pageNumber - 1) * pageSize;
+
+    const [ratings, total] = await Promise.all([
+        prisma.recruiterRating.findMany({
+            where: { recruiterId },
+            include: {
+                post: {
+                    select: {
+                        id: true,
+                        title: true,
+                    },
+                },
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+            },
+            orderBy: { createdAt: "desc" },
+            skip,
+            take: pageSize,
+        }),
+        prisma.recruiterRating.count({ where: { recruiterId } }),
+    ]);
+
+    res.status(200).json({
+        success: true,
+        message: "Recruiter ratings fetched successfully",
+        data: {
+            ratings,
+            totalPages: Math.ceil(total / pageSize),
+            currentPage: pageNumber,
+            totalRatings: total,
+        },
+    });
+});
+
+/**
+ * Get average rating for a recruiter
+ */
+export const getRecruiterAverageRating = asyncHandler(async (req: Request, res: Response) => {
+    const recruiterId = req.params.recruiterId as string;
+
+    if (!recruiterId) {
+        throw handleValidationError("Recruiter ID is required");
+    }
+
+    const result = await prisma.recruiterRating.aggregate({
+        where: { recruiterId },
+        _avg: { rating: true },
+        _count: { rating: true },
+    });
+
+    res.status(200).json({
+        success: true,
+        message: "Recruiter average rating fetched successfully",
+        data: {
+            averageRating: result._avg?.rating ? Number(result._avg.rating.toFixed(1)) : 0,
+            totalRatings: result._count ?? 0,
+        },
+    });
+});

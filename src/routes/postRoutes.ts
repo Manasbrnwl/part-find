@@ -11,6 +11,7 @@ import {
   updateUserStatus,
   recruiterGetPost,
   savePost,
+  unsavePost,
   getSavePosts,
   getNearbyPosts,
   cancelApplication
@@ -33,6 +34,7 @@ router.get("/nearby", authorize(["USER"]), getNearbyPosts);
 router.get("/get-all", authorize(["USER"]), getAllPosts);
 router.get("/:id", authorize(["USER"]), getPostById);
 router.post("/save/:postId", authorize(["USER"]), savePost);
+router.post("/unsave/:postId", authorize(["USER"]), unsavePost);
 router.get("/save/get-all", authorize(["USER"]), getSavePosts);
 router.post("/cancel-application/:postId", authorize(["USER"]), cancelApplication);
 
