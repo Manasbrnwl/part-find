@@ -286,3 +286,15 @@ model AppVersion {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+model Blog {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  image     String?
+  author    String   @default("Admin")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  is_active Boolean  @default(true)
+}
+
