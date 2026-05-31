@@ -33,6 +33,15 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
       country: true,
       experience: true,
       education: true,
+      skills: true,
+      intro_video_link: true,
+      userImages: {
+        where: { is_deleted: false },
+        select: {
+          id: true,
+          image: true,
+        }
+      },
     }
   });
 
@@ -160,6 +169,15 @@ export const getAllApplications = asyncHandler(async (req: Request, res: Respons
           country: true,
           experience: true,
           education: true,
+          skills: true,
+          intro_video_link: true,
+          userImages: {
+            where: { is_deleted: false },
+            select: {
+              id: true,
+              image: true,
+            }
+          },
         }
       },
       post: {

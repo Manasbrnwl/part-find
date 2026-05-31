@@ -102,6 +102,8 @@ export const updateProfile = asyncHandler(
       english_level,
       country,
       imageId,
+      skills,
+      intro_video_link,
     } = req.body;
 
     const parseToArray = (input: any): string[] | undefined => {
@@ -168,6 +170,7 @@ export const updateProfile = asyncHandler(
 
     const parsedExperience = parseToArray(req.body.experience);
     const parsedEducation = parseToJsonArray(req.body.education);
+    const parsedSkills = parseToArray(skills);
 
     // Update user data
     const updatedUser = await prisma.user.update({
@@ -186,7 +189,9 @@ export const updateProfile = asyncHandler(
         country: country || user.country,
         english_level: english_level || user.english_level,
         ...(parsedExperience !== undefined && { experience: parsedExperience }),
-        ...(parsedEducation !== undefined && { education: parsedEducation })
+        ...(parsedEducation !== undefined && { education: parsedEducation }),
+        ...(parsedSkills !== undefined && { skills: parsedSkills }),
+        intro_video_link: intro_video_link !== undefined ? intro_video_link : user.intro_video_link
       },
     });
 

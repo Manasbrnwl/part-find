@@ -27,7 +27,7 @@ async function processJobReminder(data: JobReminderData) {
     }
 
     await sendFCMNotification(data.fcmToken, {
-        title: "📅 Job Reminder",
+        title: "📅 Post Reminder",
         body: `Your job "${data.postTitle}" starts tomorrow at ${data.location}`,
         reminderId: data.postId,
         type: NotificationType.JOB_REMINDER,

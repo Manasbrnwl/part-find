@@ -28,6 +28,8 @@ model User {
   is_active     Boolean   @default(true)
   english_level String?
   role          Role?     @default(USER)
+  skills        String[]  @default([])
+  intro_video_link String?
 
   // Recruiter-specific fields
   recruiter_company_name         String?
@@ -121,6 +123,7 @@ model Post {
   lunch          Boolean        @default(false)
   startDate      DateTime       @default(now())
   is_active      Boolean        @default(true)
+  is_urgent      Boolean        @default(false)
   company_name   String?
   latitude       Float?
   longitude      Float?
