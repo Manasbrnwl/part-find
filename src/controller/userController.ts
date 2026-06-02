@@ -262,6 +262,8 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
       role: true,
       phone_number: true,
       address: true,
+      skills: true,
+      intro_video_link: true,
       createdAt: true,
       updatedAt: true,
       userImages: {

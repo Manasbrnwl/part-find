@@ -15,6 +15,14 @@ import {
   updateBlog,
   deleteBlog,
 } from "../controller/blogController";
+import {
+  createClient,
+  updateClient,
+  deleteClient,
+  createTestimonial,
+  updateTestimonial,
+  deleteTestimonial,
+} from "../controller/websiteController";
 
 const router = Router();
 
@@ -36,6 +44,16 @@ router.get("/blogs", getAdminBlogs);
 router.post("/blogs", createBlog);
 router.patch("/blogs/:id", updateBlog);
 router.delete("/blogs/:id", deleteBlog);
+
+// Clients administration
+router.post("/clients", createClient);
+router.patch("/clients/:id", updateClient);
+router.delete("/clients/:id", deleteClient);
+
+// Testimonials administration
+router.post("/testimonials", createTestimonial);
+router.patch("/testimonials/:id", updateTestimonial);
+router.delete("/testimonials/:id", deleteTestimonial);
 
 export default router;
 
