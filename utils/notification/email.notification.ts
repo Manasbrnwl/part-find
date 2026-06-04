@@ -6,16 +6,29 @@ dotenv.config();
 
 // Define the transporter object with the Gmail SMTP settings
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-});
+const transporter = nodemailer.createTransport(
+  process.env.EMAIL_HOST
+    ? {
+        host: process.env.EMAIL_HOST,
+        port: parseInt(process.env.EMAIL_PORT || "587"),
+        secure: process.env.EMAIL_SECURE === "true",
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+        tls: {
+          ciphers: "SSLv3",
+          rejectUnauthorized: false,
+        },
+      }
+    : {
+        service: "gmail",
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+      }
+);
 
 /**
  * Send email notification
@@ -33,20 +46,20 @@ exports.sendEmailNotification = async (
 ) => {
   try {
     const mailOptions = {
-      from: process.env.EMAIL_USER,
+      from: `"Part Find" <${process.env.EMAIL_USER}>`,
       to: email,
       subject,
       text,
       html
     };
 
-    transporter.sendMail(mailOptions, (error: any, info: any) => {
-      if (error) {
-        return false;
-      }
-      return true;
-    });
+    await transporter.sendMail(mailOptions);
+    return true;
   } catch (error: any) {
     logger.error("Email send error", { error: error.message });
+    return false;
   }
 };
+
+exports.transporter = transporter;
+

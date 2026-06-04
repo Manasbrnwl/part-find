@@ -1,7 +1,7 @@
 import { Worker, Job } from "bullmq";
 import { redisConnection } from "./config";
 import { logger } from "../../utils/logger";
-const { sendEmailNotification } = require("../../utils/notification/email.notification");
+const { sendEmailNotification, transporter } = require("../../utils/notification/email.notification");
 import { lowRatingWarningTemplate, absentWarningTemplate, completionCertificateTemplate, generateCertificateHtml } from "../../utils/notification/emailTemplates";
 import { sendFCMNotification, sendFCMToMultipleTokens } from "../../utils/firebase";
 import {
@@ -170,11 +170,6 @@ async function processCompletionCertificate(data: CompletionCertificateData) {
 
     // 3. Send email with PDF attachment
     const { subject, text, html } = completionCertificateTemplate(data.userName, data.postTitle, data.rating, data.recruiterName, issuedAt);
-    const nodemailer = require("nodemailer");
-    const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-    });
     await transporter.sendMail({
         from: `Part Find <${process.env.EMAIL_USER}>`,
         to: data.userEmail,

@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
-import nodemailer from "nodemailer";
 import { logger } from "../../utils/logger";
+const { transporter } = require("../../utils/notification/email.notification");
 
 /**
  * Handle business enquiry submission
@@ -18,14 +18,7 @@ export const createEnquiry = async (req: Request, res: Response) => {
       });
     }
 
-    // Configure transporter
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
+    // Use imported transporter
 
     const mailOptions = {
       from: `"Part-find Enquiry" <${process.env.EMAIL_USER}>`,
