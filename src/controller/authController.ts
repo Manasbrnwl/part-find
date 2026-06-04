@@ -140,6 +140,19 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+// In-memory cache for recently verified OTPs to prevent double-submit errors
+const recentlyVerifiedOTPs = new Map<string, { response: any; timestamp: number }>();
+
+// Clean up expired cache items every minute
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of recentlyVerifiedOTPs.entries()) {
+    if (now - value.timestamp > 15000) { // 15 seconds expiry
+      recentlyVerifiedOTPs.delete(key);
+    }
+  }
+}, 30000);
+
 /**
  * Verify OTP and complete signup/login
  * @param req Request object with userId, otp, and user details for new users
@@ -150,6 +163,14 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
 
   if (!userId || !otp) {
     throw handleValidationError("User ID and OTP are required");
+  }
+
+  // Check in-memory cache for double-submits
+  const cacheKey = `${userId}-${otp}`;
+  const cached = recentlyVerifiedOTPs.get(cacheKey);
+  if (cached && (Date.now() - cached.timestamp < 15000)) {
+    logger.info("Handling duplicate OTP verification request from cache", { userId });
+    return res.status(200).json(cached.response);
   }
 
   // Find user
@@ -216,7 +237,7 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
     ...userWithoutSensitiveData
   } = updatedUser;
 
-  res.status(200).json({
+  const responseData = {
     success: true,
     message: isNewUser ? "Signup successful" : "Login successful",
     data: {
@@ -226,7 +247,15 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
       isNewUser,
       baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/profile/` : `${req.protocol}://${req.hostname}/api/v1/images/profile/`,
     },
+  };
+
+  // Cache response for double-submit protection
+  recentlyVerifiedOTPs.set(cacheKey, {
+    response: responseData,
+    timestamp: Date.now(),
   });
+
+  res.status(200).json(responseData);
 });
 
 /**
