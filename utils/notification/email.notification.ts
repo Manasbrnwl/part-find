@@ -16,6 +16,8 @@ const transporter = nodemailer.createTransport(
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
+      logger: true,
+      debug: true,
       // tls: {
       //   ciphers: "SSLv3",
       //   rejectUnauthorized: false,
@@ -53,10 +55,16 @@ exports.sendEmailNotification = async (
       html
     };
 
-    await transporter.sendMail(mailOptions);
+    const info = await transporter.sendMail(mailOptions);
+    console.log(info);
     return true;
   } catch (error: any) {
     logger.error("Email send error", { error: error.message });
+    console.error("ERROR:", error);
+    console.error("CODE:", error.code);
+  console.error("COMMAND:", error.command);
+  console.error("RESPONSE:", error.response);
+  console.error("STACK:", error.stack);
     return false;
   }
 };
