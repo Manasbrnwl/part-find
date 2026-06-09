@@ -32,6 +32,45 @@ const transporter = nodemailer.createTransport(
     }
 );
 
+// Save the original sendMail function
+const originalSendMail = transporter.sendMail.bind(transporter);
+
+// Wrap sendMail with auto-retry functionality
+// @ts-ignore
+transporter.sendMail = function (
+  mailOptions: any,
+  callback?: (err: Error | null, info: any) => void
+): Promise<any> | void {
+  const maxRetries = 3;
+  let attempt = 0;
+  let delay = 1000;
+
+  const executeSend = async (): Promise<any> => {
+    while (true) {
+      try {
+        return await originalSendMail(mailOptions);
+      } catch (error: any) {
+        attempt++;
+        logger.warn(`Email send attempt ${attempt} failed: ${error.message || error}.`);
+        if (attempt >= maxRetries) {
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay *= 2; // exponential backoff
+      }
+    }
+  };
+
+  if (callback) {
+    executeSend()
+      .then((info) => callback(null, info))
+      .catch((err) => callback(err, null));
+    return;
+  }
+
+  return executeSend();
+};
+
 /**
  * Send email notification
  * @param {string} email - Recipient email
