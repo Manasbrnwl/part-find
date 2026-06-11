@@ -33,6 +33,21 @@ const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 
 /**
+ * Check if the user is a new user by checking if any of the required fields are missing
+ * Required fields: email, name, gender, phone_number, address
+ */
+const checkIsNewUser = (user: any): boolean => {
+  if (!user) return true;
+  const emailVal = user.email ? user.email.trim() : "";
+  const nameVal = user.name ? user.name.trim() : "";
+  const genderVal = user.gender ? user.gender.trim() : "";
+  const phoneVal = user.phone_number ? user.phone_number.trim() : "";
+  const addressVal = user.address ? user.address.trim() : "";
+
+  return !emailVal || !nameVal || !genderVal || !phoneVal || !addressVal;
+};
+
+/**
  * Request OTP for login or signup
  * @param req Request object with email or phone_number
  * @param res Response object
@@ -53,6 +68,9 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
       id: true,
       email: true,
       name: true,
+      gender: true,
+      phone_number: true,
+      address: true,
       userImages: {
         where: { is_deleted: false },
         select: {
@@ -99,6 +117,9 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
         id: true,
         email: true,
         name: true,
+        gender: true,
+        phone_number: true,
+        address: true,
         userImages: {
           where: { is_deleted: false },
           select: {
@@ -134,7 +155,7 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
     data: {
       userId: user?.id,
       profile: user?.userImages,
-      isNewUser: !user?.name,
+      isNewUser: checkIsNewUser(user),
       baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/profile/` : `${req.protocol}://${req.hostname}/api/v1/images/profile/`,
     },
   });
@@ -199,9 +220,6 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
     throw handleValidationError("Invalid OTP");
   }
 
-  // Determine if this is a new user (no password set)
-  const isNewUser = !user.name;
-
   // Generate tokens
   const accessToken = generateAccessToken(user.id, user.email);
   const refreshToken = await createAndSaveRefreshToken(user.id);
@@ -226,6 +244,9 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
     where: { id: user.id },
     data: updateData,
   });
+
+  // Determine if this is a new user (missing required profile details)
+  const isNewUser = checkIsNewUser(updatedUser);
 
   // Return success response without sensitive data
   const {
@@ -320,6 +341,7 @@ export const loginGoogleUser = asyncHandler(
           email: user.email,
           phone: user.phone_number || "",
           role: user.role,
+          isNewUser: checkIsNewUser(user),
           accessToken,
           refreshToken,
         },
