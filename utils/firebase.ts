@@ -22,7 +22,17 @@ const initializeFirebase = (): typeof admin => {
     }
 
     // Initialize the app with service account credentials
-    const rawKey = process.env.FIREBASE_PRIVATE_KEY;
+    let rawKey = process.env.FIREBASE_PRIVATE_KEY;
+
+    // Check if rawKey is missing or truncated, and we have a base64 fallback
+    if ((!rawKey || rawKey.length < 500) && process.env.FIREBASE_PRIVATE_KEY_BASE64) {
+      try {
+        rawKey = Buffer.from(process.env.FIREBASE_PRIVATE_KEY_BASE64, "base64").toString("utf8").trim();
+      } catch (e) {
+        // ignore
+      }
+    }
+
     let formattedKey = rawKey?.trim();
     if (formattedKey) {
       if (formattedKey.startsWith('"') && formattedKey.endsWith('"')) {
@@ -30,6 +40,17 @@ const initializeFirebase = (): typeof admin => {
       }
       if (formattedKey.startsWith("'") && formattedKey.endsWith("'")) {
         formattedKey = formattedKey.slice(1, -1).trim();
+      }
+      // If the key is not in PEM format, check if it's base64 encoded
+      if (!formattedKey.startsWith("-----BEGIN")) {
+        try {
+          const decoded = Buffer.from(formattedKey, "base64").toString("utf8").trim();
+          if (decoded.startsWith("-----BEGIN")) {
+            formattedKey = decoded;
+          }
+        } catch (e) {
+          // ignore
+        }
       }
       formattedKey = formattedKey.replace(/\\n/g, "\n");
     }
