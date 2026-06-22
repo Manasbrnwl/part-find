@@ -8,6 +8,7 @@ import {
   getAllApplications,
   deleteApplication,
   updateApplicationStatus,
+  sendUserNotification,
 } from "../controller/adminController";
 import {
   createBlog,
@@ -31,6 +32,7 @@ router.use(authenticate, authorize(["ADMIN"]));
 
 router.get("/users", getAllUsers);
 router.patch("/users/:id/toggle", toggleUserStatus);
+router.post("/users/:id/notify", sendUserNotification);
 
 router.get("/posts", getAllPosts);
 router.patch("/posts/:id/toggle", togglePostStatus);

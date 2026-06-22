@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { asyncHandler, handleNotFoundError, handleValidationError } from "../utils/errorHandler";
 import { logger } from "../../utils/logger";
+import { sendFCMNotification } from "../../utils/firebase";
 
 const prisma = new PrismaClient();
 
@@ -18,6 +19,7 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
       phone_number: true,
       role: true,
       is_active: true,
+      fcm_token: true,
       createdAt: true,
       recruiter_company_name: true,
       recruiter_type: true,
@@ -267,3 +269,48 @@ export const updateApplicationStatus = asyncHandler(async (req: Request, res: Re
     data: updatedApp,
   });
 });
+
+/**
+ * Send FCM notification to a specific user
+ */
+export const sendUserNotification = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const { title, body } = req.body;
+
+  if (!title || !body) {
+    throw handleValidationError("Title and body are required");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { fcm_token: true, name: true },
+  });
+
+  if (!user) {
+    throw handleNotFoundError("User");
+  }
+
+  if (!user.fcm_token) {
+    throw handleValidationError("User does not have an FCM token registered");
+  }
+
+  const success = await sendFCMNotification(user.fcm_token, {
+    title,
+    body,
+    reminderId: id,
+    type: "ADMIN_NOTIFICATION",
+  });
+
+  if (!success) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send FCM notification. The token might be invalid or expired.",
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "FCM notification sent successfully to user",
+  });
+});
+
