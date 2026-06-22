@@ -2,7 +2,7 @@ import * as admin from "firebase-admin";
 import dotenv from "dotenv";
 import { logger } from "./logger";
 
-dotenv.config();
+dotenv.config({ override: true });
 
 // Notification payload interface
 interface FCMNotificationPayload {

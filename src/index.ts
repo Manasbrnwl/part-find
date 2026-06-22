@@ -22,7 +22,7 @@ import YAML from 'yamljs';
 import path from 'path';
 
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const app = express();
 const prisma = new PrismaClient();
