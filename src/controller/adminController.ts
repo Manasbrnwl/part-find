@@ -294,17 +294,17 @@ export const sendUserNotification = asyncHandler(async (req: Request, res: Respo
     throw handleValidationError("User does not have an FCM token registered");
   }
 
-  const success = await sendFCMNotification(user.fcm_token, {
+  const result = await sendFCMNotification(user.fcm_token, {
     title,
     body,
     reminderId: id,
     type: "ADMIN_NOTIFICATION",
   });
 
-  if (!success) {
+  if (!result.success) {
     return res.status(500).json({
       success: false,
-      message: "Failed to send FCM notification. The token might be invalid or expired.",
+      message: `Failed to send FCM notification: ${result.error || "The token might be invalid or expired."}`,
     });
   }
 

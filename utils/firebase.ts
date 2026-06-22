@@ -22,11 +22,32 @@ const initializeFirebase = (): typeof admin => {
     }
 
     // Initialize the app with service account credentials
+    const rawKey = process.env.FIREBASE_PRIVATE_KEY;
+    let formattedKey = rawKey?.trim();
+    if (formattedKey) {
+      if (formattedKey.startsWith('"') && formattedKey.endsWith('"')) {
+        formattedKey = formattedKey.slice(1, -1).trim();
+      }
+      if (formattedKey.startsWith("'") && formattedKey.endsWith("'")) {
+        formattedKey = formattedKey.slice(1, -1).trim();
+      }
+      formattedKey = formattedKey.replace(/\\n/g, "\n");
+    }
+    
+    logger.info("Firebase initialization parameters", {
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      rawKeyLength: rawKey?.length,
+      rawKeyStart: rawKey ? JSON.stringify(rawKey.substring(0, 50)) : "undefined",
+      formattedKeyLength: formattedKey?.length,
+      formattedKeyStart: formattedKey ? JSON.stringify(formattedKey.substring(0, 50)) : "undefined",
+    });
+
     admin.initializeApp({
       credential: admin.credential.cert({
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+        privateKey: formattedKey,
       }),
     });
 
@@ -58,11 +79,11 @@ const getFirebaseAdmin = (() => {
 const sendFCMNotification = async (
   fcmToken: string,
   notification: FCMNotificationPayload
-): Promise<boolean> => {
+): Promise<{ success: boolean; error?: string }> => {
   try {
     if (!fcmToken) {
       logger.warn("sendFCMNotification called without FCM token");
-      return false;
+      return { success: false, error: "FCM token is empty" };
     }
 
     const firebaseAdmin = getFirebaseAdmin();
@@ -103,18 +124,21 @@ const sendFCMNotification = async (
 
     const response = await firebaseAdmin.messaging().send(message);
     logger.info(`FCM notification sent successfully. Message ID: ${response}`);
-    return true;
+    return { success: true };
   } catch (error: any) {
     logger.error("Failed to send FCM notification", { error: error.message || error });
 
     // Handle specific FCM errors
+    let errorMsg = error.message || String(error);
     if (error.code === "messaging/registration-token-not-registered") {
       logger.warn("FCM token is no longer valid. User should re-register.");
+      errorMsg = "Token not registered / expired";
     } else if (error.code === "messaging/invalid-registration-token") {
       logger.warn("Invalid FCM token format.");
+      errorMsg = "Invalid token format";
     }
 
-    return false;
+    return { success: false, error: errorMsg };
   }
 };
 

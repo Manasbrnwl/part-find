@@ -35,17 +35,17 @@ export const sendTestNotification = asyncHandler(async (req: Request, res: Respo
         );
     }
 
-    const success = await sendFCMNotification(user.fcm_token, {
+    const result = await sendFCMNotification(user.fcm_token, {
         title: "🔔 Test Notification",
         body: `Hello ${user.name || "there"}! Your notifications are working correctly.`,
         reminderId: userId,
         type: "TEST_NOTIFICATION",
     });
 
-    if (!success) {
+    if (!result.success) {
         return res.status(500).json({
             success: false,
-            message: "Failed to send notification. FCM token may be invalid or expired.",
+            message: `Failed to send notification: ${result.error || "FCM token may be invalid or expired."}`,
         });
     }
 
