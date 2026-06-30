@@ -10,12 +10,14 @@ import {
 } from "../controller/authController";
 import { authenticate } from "../middleware/authMiddleware";
 
+import { authLimiter } from "../middleware/rateLimiter";
+
 const router = express.Router();
 
 // Public auth routes
-router.post("/request-otp", requestOTP);
-router.post("/verify-otp", verifyOTP);
-router.post("/firebase-signin", loginGoogleUser);
+router.post("/request-otp", authLimiter, requestOTP);
+router.post("/verify-otp", authLimiter, verifyOTP);
+router.post("/firebase-signin", authLimiter, loginGoogleUser);
 router.post("/refresh", refreshTokens);
 
 // Protected auth routes

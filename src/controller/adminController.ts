@@ -314,3 +314,52 @@ export const sendUserNotification = asyncHandler(async (req: Request, res: Respo
   });
 });
 
+/**
+ * Switch a user's role between USER and RECRUITER
+ */
+export const switchUserRole = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const { role } = req.body;
+
+  const user = await prisma.user.findUnique({
+    where: { id },
+  });
+
+  if (!user) {
+    throw handleNotFoundError("User");
+  }
+
+  // Prevent admin from changing their own role
+  if (user.id === req.userId) {
+    throw handleValidationError("Cannot change your own role");
+  }
+
+  let newRole: "USER" | "RECRUITER";
+  if (role === "USER" || role === "RECRUITER") {
+    newRole = role;
+  } else {
+    // Default to toggling between USER and RECRUITER
+    newRole = user.role === "RECRUITER" ? "USER" : "RECRUITER";
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: { id },
+    data: { role: newRole },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+    }
+  });
+
+  logger.info(`Admin switched role for user ${id} to ${updatedUser.role}`);
+
+  res.status(200).json({
+    success: true,
+    message: `User role changed to ${updatedUser.role} successfully`,
+    data: updatedUser,
+  });
+});
+
+

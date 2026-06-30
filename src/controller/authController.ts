@@ -85,11 +85,11 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
     },
   });
 
-  logger.info("OTP requested", { 
-    identifier, 
-    isEmail, 
+  logger.info("OTP requested", {
+    identifier,
+    isEmail,
     userExists: !!user,
-    userId: user?.id 
+    userId: user?.id
   });
 
   // Generate OTP
@@ -234,19 +234,19 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
   // Update user
   const updatedUser = await prisma.user.update({
     include: {
-    userImages: {
-      where: { is_deleted: false },
-      select: {
-        image: true,
+      userImages: {
+        where: { is_deleted: false },
+        select: {
+          image: true,
+        },
       },
-    },
     },
     where: { id: user.id },
     data: updateData,
   });
 
   // Determine if this is a new user (missing required profile details)
-  const isNewUser = checkIsNewUser(updatedUser);
+  const isNewUser = user.role !== "RECRUITER" && checkIsNewUser(updatedUser);
 
   // Return success response without sensitive data
   const {
@@ -341,7 +341,7 @@ export const loginGoogleUser = asyncHandler(
           email: user.email,
           phone: user.phone_number || "",
           role: user.role,
-          isNewUser: checkIsNewUser(user),
+          isNewUser: user.role !== "RECRUITER" && checkIsNewUser(user),
           accessToken,
           refreshToken,
         },
