@@ -616,3 +616,81 @@ export const deleteUserImage = asyncHandler(async (req: Request, res: Response) 
     message: "Image deleted successfully",
   });
 });
+
+/**
+ * GET /users/profile/completion
+ * Returns profile completion percentage and per-field breakdown.
+ * Supports both USER and RECRUITER roles.
+ */
+export const getProfileCompletion = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  if (!userId) {
+    throw handleAuthorizationError("User ID is required");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      userImages: { where: { is_deleted: false }, select: { id: true } },
+      UserCategory: { select: { id: true } },
+      recruiterIndustries: { where: { is_active: true }, select: { id: true } },
+      recruiterGigTypes: { where: { is_active: true }, select: { id: true } },
+    },
+  });
+
+  if (!user) {
+    throw handleNotFoundError("User");
+  }
+
+  let fields: Record<string, boolean>;
+
+  if (user.role === "RECRUITER") {
+    fields = {
+      name: !!user.name?.trim(),
+      email: !!user.email?.trim(),
+      phone_number: !!user.phone_number?.trim(),
+      recruiter_company_name: !!user.recruiter_company_name?.trim(),
+      recruiter_type: !!user.recruiter_type?.trim(),
+      recruiter_company_address: !!user.recruiter_company_address?.trim(),
+      recruiter_company_registration: !!user.recruiter_company_registration?.trim(),
+      recruiter_company_logo: !!user.recruiter_company_logo?.trim(),
+      industries: user.recruiterIndustries.length > 0,
+      gig_types: user.recruiterGigTypes.length > 0,
+    };
+  } else {
+    const education = Array.isArray(user.education) ? user.education : [];
+    fields = {
+      name: !!user.name?.trim(),
+      email: !!user.email?.trim(),
+      phone_number: !!user.phone_number?.trim(),
+      date_of_birth: !!user.date_of_birth,
+      gender: !!user.gender?.trim(),
+      address: !!user.address?.trim(),
+      state: !!user.state?.trim(),
+      country: !!user.country?.trim(),
+      english_level: !!user.english_level?.trim(),
+      skills: user.skills.length > 0,
+      experience: user.experience.length > 0,
+      education: education.length > 0,
+      intro_video_link: !!user.intro_video_link?.trim(),
+      profile_image: user.userImages.length > 0,
+      categories: user.UserCategory.length > 0,
+    };
+  }
+
+  const total = Object.keys(fields).length;
+  const completed = Object.values(fields).filter(Boolean).length;
+  const percentage = Math.round((completed / total) * 100);
+
+  res.status(200).json({
+    success: true,
+    message: "Profile completion fetched successfully",
+    data: {
+      percentage,
+      completed,
+      total,
+      fields,
+    },
+  });
+});

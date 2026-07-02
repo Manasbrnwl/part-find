@@ -47,6 +47,17 @@ const checkIsNewUser = (user: any): boolean => {
   return !emailVal || !nameVal || !genderVal || !phoneVal || !addressVal;
 };
 
+const checkIsNewRecruiter = (user: any): boolean => {
+  if (!user) return true;
+  const emailVal = user.email ? user.email.trim() : "";
+  const phoneVal = user.phone_number ? user.phone_number.trim() : "";
+  const recruiter_company_name = user.recruiter_company_name ? user.recruiter_company_name.trim() : "";
+  const recruiter_type = user.recruiter_type ? user.recruiter_type.trim() : "";
+  const recruiter_company_address = user.recruiter_company_address ? user.recruiter_company_address.trim() : "";
+
+  return !emailVal || !phoneVal || !recruiter_company_name || !recruiter_type || !recruiter_company_address;
+};
+
 /**
  * Request OTP for login or signup
  * @param req Request object with email or phone_number
@@ -71,6 +82,10 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
       gender: true,
       phone_number: true,
       address: true,
+      role: true,
+      recruiter_company_name: true,
+      recruiter_type: true,
+      recruiter_company_address: true,
       userImages: {
         where: { is_deleted: false },
         select: {
@@ -120,6 +135,10 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
         gender: true,
         phone_number: true,
         address: true,
+        role: true,
+        recruiter_company_name: true,
+        recruiter_type: true,
+        recruiter_company_address: true,
         userImages: {
           where: { is_deleted: false },
           select: {
@@ -155,7 +174,7 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
     data: {
       userId: user?.id,
       profile: user?.userImages,
-      isNewUser: checkIsNewUser(user),
+      isNewUser: user.role == "RECRUITER" ? checkIsNewRecruiter(user) : checkIsNewUser(user),
       baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/profile/` : `${req.protocol}://${req.hostname}/api/v1/images/profile/`,
     },
   });
@@ -246,12 +265,12 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
   });
 
   // Determine if this is a new user (missing required profile details)
-  const isNewUser = user.role !== "RECRUITER" && checkIsNewUser(updatedUser);
+  const isNewUser = user.role == "RECRUITER" ? checkIsNewRecruiter(updatedUser) : checkIsNewUser(updatedUser);
 
   // Return success response without sensitive data
   const {
     otp: __,
-    otp_exp: ___,
+    otp_exp: ___, 
     jwt_token,
     createdAt,
     updatedAt,
@@ -341,7 +360,7 @@ export const loginGoogleUser = asyncHandler(
           email: user.email,
           phone: user.phone_number || "",
           role: user.role,
-          isNewUser: user.role !== "RECRUITER" && checkIsNewUser(user),
+          isNewUser: user.role == "RECRUITER" ? checkIsNewRecruiter(user) : checkIsNewUser(user),
           accessToken,
           refreshToken,
         },

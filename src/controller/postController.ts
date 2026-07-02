@@ -401,13 +401,28 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
   const [applicant, recruiter] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
-      select: { fcm_token: true, name: true },
+      select: { fcm_token: true, name: true, gender: true },
     }),
     prisma.user.findUnique({
       where: { id: post.userId },
       select: { fcm_token: true },
     }),
   ]);
+
+  // Gender eligibility check
+  // boys > 0 && girls === 0  → male only
+  // girls > 0 && boys === 0  → female only
+  // both > 0 || both === 0  → open to all
+  const boysOnly = (post.boys ?? 0) > 0 && (post.girls ?? 0) === 0;
+  const girlsOnly = (post.girls ?? 0) > 0 && (post.boys ?? 0) === 0;
+  const userGender = applicant?.gender?.trim().toLowerCase();
+
+  if (boysOnly && userGender !== "male") {
+    throw handleValidationError("This post is open to male applicants only");
+  }
+  if (girlsOnly && userGender !== "female") {
+    throw handleValidationError("This post is open to female applicants only");
+  }
 
   const application = await prisma.postApplied.create({
     data: {

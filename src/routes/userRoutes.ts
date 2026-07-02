@@ -9,6 +9,7 @@ import {
   updateRecruiterProfile,
   updateFcmToken,
   deleteUserImage,
+  getProfileCompletion,
 } from "../controller/userController";
 import multer from "multer";
 import sharp from "sharp";
@@ -94,6 +95,9 @@ router
     compressProfileImages,
     updateProfile
   );
+
+// Profile completion percentage
+router.get("/profile/completion", getProfileCompletion);
 
 // Recruiter profile routes
 router
