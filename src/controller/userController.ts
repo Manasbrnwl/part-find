@@ -16,13 +16,86 @@ dotenv.config();
 
 const prisma = new PrismaClient();
 
-// Get current user profile
+/**
+ * Fetch and shape recruiter-only profile data.
+ * Shared by GET /users/profile (when role is RECRUITER) and GET /users/recruiter-profile.
+ */
+const fetchRecruiterProfileData = async (userId: string) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      recruiterIndustries: {
+        where: { is_active: true },
+        select: {
+          id: true,
+          industry: true,
+        },
+      },
+      recruiterGigTypes: {
+        where: { is_active: true },
+        select: {
+          id: true,
+          gigType: true,
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw handleNotFoundError("User");
+  }
+
+  if (user.role !== "RECRUITER") {
+    throw handleNotFoundError("Recruiter Profile");
+  }
+
+  return {
+    id: user.id,
+    fullName: user.name,
+    email: user.email,
+    mobileNumber: user.phone_number,
+    companyName: user.recruiter_company_name,
+    recruiterType: user.recruiter_type,
+    companyRegistration: user.recruiter_company_registration,
+    companyAddress: user.recruiter_company_address,
+    companyLogo: user.recruiter_company_logo,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+    industries: user.recruiterIndustries,
+    gigTypes: user.recruiterGigTypes,
+  };
+};
+
+// Get current user profile - role aware: RECRUITER logins get recruiter-only
+// data, everyone else (USER/ADMIN) gets user-only data (no recruiter fields).
 export const getProfile = asyncHandler(async (req: Request, res: Response) => {
   // @ts-ignore - userId will be added by auth middleware
   const userId = req.userId;
 
   if (!userId) {
     throw handleAuthorizationError("User ID is required");
+  }
+
+  const roleCheck = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  if (!roleCheck) {
+    throw handleNotFoundError("User");
+  }
+
+  if (roleCheck.role === "RECRUITER") {
+    const recruiterProfile = await fetchRecruiterProfileData(userId);
+    res.status(200).json({
+      success: true,
+      message: "Recruiter profile fetched successfully",
+      data: {
+        recruiterProfile,
+        baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/recruiter/` : `${req.protocol}://${req.hostname}/api/v1/images/recruiter/`,
+      },
+    });
+    return;
   }
 
   const user = await prisma.user.findUnique({
@@ -52,7 +125,7 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
     throw handleNotFoundError("User");
   }
 
-  // Return user data without password, createdAt, and updatedAt
+  // Return user data without password, createdAt, updatedAt, and recruiter-only fields
   const {
     createdAt,
     updatedAt,
@@ -60,6 +133,11 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
     otp,
     otp_exp,
     fcm_token,
+    recruiter_company_name,
+    recruiter_type,
+    recruiter_company_registration,
+    recruiter_company_address,
+    recruiter_company_logo,
     ...userWithoutPassword
   } = user;
 
@@ -300,54 +378,13 @@ export const getRecruiterProfile = asyncHandler(
       throw handleAuthorizationError("User ID is required");
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        recruiterIndustries: {
-          where: { is_active: true },
-          select: {
-            id: true,
-            industry: true,
-          },
-        },
-        recruiterGigTypes: {
-          where: { is_active: true },
-          select: {
-            id: true,
-            gigType: true,
-          },
-        },
-      },
-    });
-
-    if (!user) {
-      throw handleNotFoundError("User");
-    }
-
-    // Check if user is recruiter and has recruiter details
-    if (user.role !== "RECRUITER" || !user.recruiter_company_name) {
-      throw handleNotFoundError("Recruiter Profile");
-    }
+    const recruiterProfile = await fetchRecruiterProfileData(userId);
 
     res.status(200).json({
       success: true,
       message: "Recruiter profile fetched successfully",
       data: {
-        recruiterProfile: {
-          id: user.id,
-          fullName: user.name,
-          email: user.email,
-          mobileNumber: user.phone_number,
-          companyName: user.recruiter_company_name,
-          recruiterType: user.recruiter_type,
-          companyRegistration: user.recruiter_company_registration,
-          companyAddress: user.recruiter_company_address,
-          companyLogo: user.recruiter_company_logo,
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
-          industries: user.recruiterIndustries,
-          gigTypes: user.recruiterGigTypes,
-        },
+        recruiterProfile,
         baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/recruiter/` : `${req.protocol}://${req.hostname}/api/v1/images/recruiter/`,
       },
     });

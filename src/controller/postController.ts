@@ -36,7 +36,10 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
     responsibility,
     designation,
     payment,
+    paymentGirls,
+    paymentBoys,
     paymentDate,
+    dressCode,
     company_name,
     categories,
     category,
@@ -61,6 +64,12 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
         "Sum of total boys and total girls should be equal to the vacancy"
       );
   }
+  if (girls > 0 && !paymentGirls) {
+    throw handleValidationError("Payment for girls is required when girls vacancies are specified");
+  }
+  if (boys > 0 && !paymentBoys) {
+    throw handleValidationError("Payment for boys is required when boys vacancies are specified");
+  }
 
   const post = await prisma.post.create({
     data: {
@@ -74,8 +83,11 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
       location: location || "No location",
       responsibility: responsibility || "No responsibility",
       startDate: new Date(startDate),
-      payment: payment || "No payment",
+      payment: payment ? Number(payment) : null,
+      paymentGirls: paymentGirls ? Number(paymentGirls) : null,
+      paymentBoys: paymentBoys ? Number(paymentBoys) : null,
       paymentDate: new Date(paymentDate),
+      dressCode: dressCode || null,
       company_name,
       category,
       girls,
@@ -142,7 +154,10 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
     responsibility,
     designation,
     payment,
+    paymentGirls,
+    paymentBoys,
     paymentDate,
+    dressCode,
     company_name,
     girls,
     boys,
@@ -188,7 +203,10 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
       location: location || post.location,
       responsibility: responsibility || post.responsibility,
       role: designation || post.role,
-      payment: Number(payment) || post.payment,
+      payment: payment !== undefined ? Number(payment) : post.payment,
+      paymentGirls: paymentGirls !== undefined ? Number(paymentGirls) : post.paymentGirls,
+      paymentBoys: paymentBoys !== undefined ? Number(paymentBoys) : post.paymentBoys,
+      dressCode: dressCode !== undefined ? dressCode : post.dressCode,
       company_name,
       category: category || post.category,
       girls,
@@ -261,7 +279,10 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
         total: true,
         location: true,
         payment: true,
+        paymentGirls: true,
+        paymentBoys: true,
         paymentDate: true,
+        dressCode: true,
         responsibility: true,
         company_name: true,
         girls: true,
@@ -484,6 +505,12 @@ export const getAppliedPosts = asyncHandler(
               endDate: true,
               category: true,
               is_urgent: true,
+              girls: true,
+              boys: true,
+              payment: true,
+              paymentGirls: true,
+              paymentBoys: true,
+              dressCode: true,
             },
           },
           status: true,
@@ -904,7 +931,10 @@ export const getSavePosts = asyncHandler(
             total: true,
             location: true,
             payment: true,
+            paymentGirls: true,
+            paymentBoys: true,
             paymentDate: true,
+            dressCode: true,
             responsibility: true,
             company_name: true,
             girls: true,
@@ -990,7 +1020,10 @@ export const getNearbyPosts = asyncHandler(
         total: true,
         location: true,
         payment: true,
+        paymentGirls: true,
+        paymentBoys: true,
         paymentDate: true,
+        dressCode: true,
         responsibility: true,
         company_name: true,
         girls: true,

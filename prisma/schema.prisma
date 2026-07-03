@@ -117,7 +117,10 @@ model Post {
   updatedAt      DateTime       @updatedAt
   location       String?
   payment        Float?
+  paymentGirls   Float?
+  paymentBoys    Float?
   paymentDate    DateTime?
+  dressCode      String?
   responsibility String?
   role           String?
   lunch          Boolean        @default(false)
