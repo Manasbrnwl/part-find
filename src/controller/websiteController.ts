@@ -206,3 +206,36 @@ export const deleteTestimonial = asyncHandler(async (req: Request, res: Response
     message: "Testimonial deleted successfully",
   });
 });
+
+// --- FEATURED JOBS (public, for the marketing landing page) ---
+
+/**
+ * Get a handful of the newest live job posts, with only public-safe
+ * fields — no applicant/save data, which requires an authenticated user.
+ */
+export const getFeaturedJobs = asyncHandler(async (req: Request, res: Response) => {
+  const limit = Math.min(Number(req.query.limit) || 3, 10);
+
+  const jobs = await prisma.post.findMany({
+    where: {
+      is_active: true,
+      startDate: { gt: new Date() },
+    },
+    select: {
+      id: true,
+      title: true,
+      location: true,
+      company_name: true,
+      category: true,
+      payment: true,
+      startDate: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
+
+  res.status(200).json({
+    success: true,
+    data: jobs,
+  });
+});
