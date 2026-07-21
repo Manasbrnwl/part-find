@@ -57,11 +57,10 @@ const initializeFirebase = (): typeof admin => {
     
     logger.info("Firebase initialization parameters", {
       projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      hasClientEmail: Boolean(process.env.FIREBASE_CLIENT_EMAIL),
       rawKeyLength: rawKey?.length,
-      rawKeyStart: rawKey ? JSON.stringify(rawKey.substring(0, 50)) : "undefined",
       formattedKeyLength: formattedKey?.length,
-      formattedKeyStart: formattedKey ? JSON.stringify(formattedKey.substring(0, 50)) : "undefined",
+      formattedKeyLooksLikePem: Boolean(formattedKey?.startsWith("-----BEGIN")),
     });
 
     admin.initializeApp({

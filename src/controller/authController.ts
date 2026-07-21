@@ -30,7 +30,6 @@ const {
 dotenv.config();
 
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 
 /**
  * Check if the user is a new user by checking if any of the required fields are missing
@@ -298,8 +297,10 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
   res.status(200).json(responseData);
 });
 
+const SUPPORTED_SIGN_IN_PROVIDERS = ["google.com", "apple.com"];
+
 /**
- * Complete Third Party Login/Signup
+ * Complete Third Party Login/Signup (Google or Apple, via Firebase)
  * @param req Request object with userId, otp, and user details for new users
  * @param res Response object
  */
@@ -310,30 +311,52 @@ export const loginGoogleUser = asyncHandler(
       if (!idToken || !fcmToken) {
         return res.status(400).json({
           success: false,
-          message: "Google ID token and FCM token are required",
+          message: "ID token and FCM token are required",
         });
       }
       const admin = getFirebaseAdmin();
-      const decodedToken = await admin.auth().verifyIdToken(idToken);
-      const { user_id, email: rawEmail, name } = decodedToken;
+      let decodedToken;
+      try {
+        decodedToken = await admin.auth().verifyIdToken(idToken, true);
+      } catch (verifyError) {
+        return res.status(401).json({
+          success: false,
+          message: "Invalid or expired authentication token",
+        });
+      }
+
+      const provider = decodedToken.firebase?.sign_in_provider;
+      if (!provider || !SUPPORTED_SIGN_IN_PROVIDERS.includes(provider)) {
+        return res.status(401).json({
+          success: false,
+          message: "Token was not issued via a supported sign-in provider",
+        });
+      }
+
+      if (!decodedToken.email_verified) {
+        return res.status(401).json({
+          success: false,
+          message: "Account email is not verified",
+        });
+      }
+
+      const { uid, email: rawEmail, name } = decodedToken;
       const email = rawEmail?.toLowerCase();
 
       if (!email) {
         return res.status(400).json({
           success: false,
-          message: "Google account does not have an associated email",
+          message: "Account does not have an associated email",
         });
       }
 
       let user = await prisma.user.findUnique({
-        where: {
-          email: email,
-        },
+        where: { email },
       });
       if (!user) {
         user = await prisma.user.create({
           data: {
-            id: user_id,
+            id: uid,
             name,
             email,
           },
