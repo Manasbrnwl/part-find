@@ -2,7 +2,7 @@ import { Worker, Job } from "bullmq";
 import { redisConnection } from "./config";
 import { logger } from "../../utils/logger";
 const { sendEmailNotification, transporter } = require("../../utils/notification/email.notification");
-import { lowRatingWarningTemplate, absentWarningTemplate, completionCertificateTemplate, generateCertificateHtml } from "../../utils/notification/emailTemplates";
+import { lowRatingWarningTemplate, absentWarningTemplate, completionCertificateTemplate, generateCertificateHtml, otpEmailTemplate } from "../../utils/notification/emailTemplates";
 import { sendFCMNotification, sendFCMToMultipleTokens } from "../../utils/firebase";
 import {
     NotificationType,
@@ -13,6 +13,7 @@ import {
     LowRatingWarningData,
     AbsentWarningData,
     CompletionCertificateData,
+    OtpEmailData,
 } from "./notificationQueue";
 
 let notificationWorker: Worker | null = null;
@@ -138,6 +139,15 @@ async function processAbsentWarning(data: AbsentWarningData) {
 }
 
 /**
+ * Process an OTP email send
+ */
+async function processOtpEmail(data: OtpEmailData) {
+    const { subject, text, html } = otpEmailTemplate(data.otp, data.expiryMinutes);
+    await sendEmailNotification(data.email, subject, text, html);
+    logger.info(`OTP email sent to ${data.email}`);
+}
+
+/**
  * Process completion certificate notification
  */
 async function processCompletionCertificate(data: CompletionCertificateData) {
@@ -223,7 +233,11 @@ export function startNotificationWorker() {
                     case NotificationType.COMPLETION_CERTIFICATE:
                         await processCompletionCertificate(job.data as CompletionCertificateData);
                         break;
-        
+
+                    case NotificationType.OTP_EMAIL:
+                        await processOtpEmail(job.data as OtpEmailData);
+                        break;
+
                     default:
                         logger.warn(`Unknown notification type: ${job.name}`);
                 }

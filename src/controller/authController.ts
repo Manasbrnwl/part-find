@@ -23,9 +23,7 @@ import {
 } from "../utils/errorHandler";
 import { logger } from "../../utils/logger";
 import { getFirebaseAdmin } from "../../utils/firebase";
-const {
-  sendEmailNotification,
-} = require("../../utils/notification/email.notification");
+import { queueOtpEmail } from "../queues/notificationQueue";
 
 dotenv.config();
 
@@ -150,21 +148,13 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
     user = newUser;
   }
 
-  // Send OTP via email or SMS
-  let sent = false;
+  // Send OTP via email or SMS (queued for async delivery so this endpoint
+  // responds immediately instead of blocking on the SMTP round-trip)
   if (isEmail) {
-    const { otpEmailTemplate } = require("../../utils/notification/emailTemplates");
-    const { subject, text, html } = otpEmailTemplate(otp, 3);
-    await sendEmailNotification(identifier, subject, text, html);
-    sent = true;
+    await queueOtpEmail({ email: identifier, otp, expiryMinutes: 3 });
   } else {
     // For SMS implementation (placeholder)
     // Implement SMS sending logic here
-    sent = true;
-  }
-
-  if (!sent) {
-    throw new Error(`Failed to send OTP to ${isEmail ? "email" : "phone"}`);
   }
 
   res.status(200).json({

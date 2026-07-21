@@ -10,6 +10,7 @@ export enum NotificationType {
     LOW_RATING_WARNING = "LOW_RATING_WARNING",
     ABSENT_WARNING = "ABSENT_WARNING",
     COMPLETION_CERTIFICATE = "COMPLETION_CERTIFICATE",
+    OTP_EMAIL = "OTP_EMAIL",
 }
 
 export interface JobReminderData {
@@ -57,6 +58,12 @@ export interface AbsentWarningData {
     userEmail: string;
     postTitle: string;
     fcmToken?: string;
+}
+
+export interface OtpEmailData {
+    email: string;
+    otp: string;
+    expiryMinutes: number;
 }
 
 export interface CompletionCertificateData {
@@ -193,6 +200,21 @@ export async function queueAbsentWarning(data: AbsentWarningData) {
         }
     );
     logger.info(`Absent warning queued for user ${data.userId}`);
+}
+
+/**
+ * Queue an OTP email for immediate async delivery (keeps the request-otp
+ * endpoint from blocking on the SMTP round-trip)
+ */
+export async function queueOtpEmail(data: OtpEmailData) {
+    await getNotificationQueue().add(
+        NotificationType.OTP_EMAIL,
+        data,
+        {
+            jobId: `otp-${data.email}-${Date.now()}`,
+        }
+    );
+    logger.info(`OTP email queued for ${data.email}`);
 }
 
 /**
