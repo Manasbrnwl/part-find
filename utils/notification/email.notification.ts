@@ -22,6 +22,9 @@ const transporter = nodemailer.createTransport(
       tls: {
         minVersion: "TLSv1.2",
       },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 15000,
     }
     : {
       service: "gmail",
