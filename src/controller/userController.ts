@@ -133,6 +133,8 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
     otp,
     otp_exp,
     fcm_token,
+    lastActiveAt,
+    lastWinBackEmailAt,
     recruiter_company_name,
     recruiter_type,
     recruiter_company_registration,
@@ -315,6 +317,8 @@ export const updateProfile = asyncHandler(
       jwt_token,
       otp,
       otp_exp,
+      lastActiveAt,
+      lastWinBackEmailAt,
       ...userWithoutPassword
     } = updatedUser;
 

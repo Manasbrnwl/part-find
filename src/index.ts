@@ -16,6 +16,7 @@ import adminRoutes from "./routes/adminRoutes";
 import blogRoutes from "./routes/blogRoutes";
 import websiteRoutes from "./routes/websiteRoutes";
 import { startNotificationWorker } from "./queues/notificationWorker";
+import { scheduleWinBackSweep } from "./queues/notificationQueue";
 import { logger, morganStream } from "../utils/logger";
 import swaggerUi from 'swagger-ui-express';
 import YAML from 'yamljs';
@@ -95,6 +96,11 @@ try {
 } catch (err) {
   logger.error("Failed to start notification worker", { error: err });
 }
+
+// Register the recurring inactive-user win-back sweep
+scheduleWinBackSweep().catch((err) => {
+  logger.error("Failed to schedule win-back sweep", { error: err });
+});
 
 // Start server
 app.listen(PORT, () => {

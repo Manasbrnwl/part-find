@@ -4,6 +4,7 @@ import { logger } from "../../utils/logger";
 const { sendEmailNotification, transporter } = require("../../utils/notification/email.notification");
 import { lowRatingWarningTemplate, absentWarningTemplate, completionCertificateTemplate, generateCertificateHtml } from "../../utils/notification/emailTemplates";
 import { sendFCMNotification, sendFCMToMultipleTokens } from "../../utils/firebase";
+import { runWinBackSweep } from "../jobs/winBackSweep";
 import {
     NotificationType,
     JobReminderData,
@@ -223,7 +224,11 @@ export function startNotificationWorker() {
                     case NotificationType.COMPLETION_CERTIFICATE:
                         await processCompletionCertificate(job.data as CompletionCertificateData);
                         break;
-        
+
+                    case NotificationType.WIN_BACK_SWEEP:
+                        await runWinBackSweep();
+                        break;
+
                     default:
                         logger.warn(`Unknown notification type: ${job.name}`);
                 }

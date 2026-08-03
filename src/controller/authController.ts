@@ -247,6 +247,7 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
   const updateData: any = {
     otp: null, // Clear OTP after successful verification
     otp_exp: null,
+    lastActiveAt: new Date(),
     ...(fcmToken && { fcm_token: fcmToken }),
   };
 
@@ -270,10 +271,12 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
   // Return success response without sensitive data
   const {
     otp: __,
-    otp_exp: ___, 
+    otp_exp: ___,
     jwt_token,
     createdAt,
     updatedAt,
+    lastActiveAt,
+    lastWinBackEmailAt,
     ...userWithoutSensitiveData
   } = updatedUser;
 
@@ -350,6 +353,7 @@ export const loginGoogleUser = asyncHandler(
         },
         data: {
           fcm_token: fcmToken,
+          lastActiveAt: new Date(),
         },
       });
       res.json({

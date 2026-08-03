@@ -4,6 +4,10 @@
 
 const BRAND_COLOR = "#4F46E5";
 const BRAND_NAME = "Part Find";
+const BRAND_LOGO_URL = "https://partfind-frontend.pages.dev/assets/logo.webp";
+const CONTACT_EMAIL = "official@part-find.org";
+const CONTACT_PHONE = "+91 85389 72281";
+const INSTAGRAM_URL = "https://instagram.com/part_find";
 
 function baseLayout(content: string): string {
     return `
@@ -22,6 +26,7 @@ function baseLayout(content: string): string {
                     <!-- Header -->
                     <tr>
                         <td style="background:linear-gradient(135deg,${BRAND_COLOR},#7C3AED);padding:28px 32px;text-align:center;">
+                            <img src="${BRAND_LOGO_URL}" alt="${BRAND_NAME}" width="44" height="44" style="display:block;margin:0 auto 10px;border-radius:10px;border:2px solid rgba(255,255,255,0.5);" />
                             <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:0.5px;">${BRAND_NAME}</h1>
                         </td>
                     </tr>
@@ -33,10 +38,15 @@ function baseLayout(content: string): string {
                     </tr>
                     <!-- Footer -->
                     <tr>
-                        <td style="padding:20px 32px;background-color:#f9fafb;border-top:1px solid #e5e7eb;text-align:center;">
-                            <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.5;">
+                        <td style="padding:24px 32px;background-color:#f9fafb;border-top:1px solid #e5e7eb;text-align:center;">
+                            <p style="margin:0 0 10px;color:#6b7280;font-size:12px;line-height:1.6;">
+                                Questions? Reach us at <a href="mailto:${CONTACT_EMAIL}" style="color:${BRAND_COLOR};text-decoration:none;">${CONTACT_EMAIL}</a>
+                                or call <a href="tel:${CONTACT_PHONE.replace(/\s/g, "")}" style="color:${BRAND_COLOR};text-decoration:none;">${CONTACT_PHONE}</a><br/>
+                                <a href="${INSTAGRAM_URL}" style="color:#9ca3af;text-decoration:none;">@part_find</a>
+                            </p>
+                            <p style="margin:0;color:#9ca3af;font-size:11px;line-height:1.5;">
                                 &copy; ${new Date().getFullYear()} ${BRAND_NAME}. All rights reserved.<br/>
-                                This is an automated message. Please do not reply.
+                                This is an automated message. Please do not reply directly to this email.
                             </p>
                         </td>
                     </tr>
@@ -224,6 +234,78 @@ export function completionCertificateTemplate(userName: string, postTitle: strin
             Your <strong>Certificate of Completion</strong> is attached as a PDF. You can also download it anytime from the Part Find app.
         </p>
         <p style="margin:0;color:#9ca3af;font-size:12px;text-align:center;">Issued on ${dateStr}</p>
+    `);
+
+    return { subject, text, html };
+}
+
+/**
+ * Win-back email for inactive students — encourages them to come back and
+ * check new gigs, framed around hope/momentum rather than guilt.
+ */
+export function winBackStudentTemplate(userName: string): { subject: string; text: string; html: string } {
+    const subject = `We miss you, ${userName} — new gigs are waiting on ${BRAND_NAME}`;
+
+    const text = `Hi ${userName}, it's been a while! We're working hard behind the scenes to bring more events and gigs onto ${BRAND_NAME} so you can keep earning. Open the app and see what's new — your next opportunity could be one tap away.`;
+
+    const html = baseLayout(`
+        <h2 style="margin:0 0 16px;color:${BRAND_COLOR};font-size:19px;font-weight:700;">We haven't forgotten about you, ${userName} 👋</h2>
+        <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">
+            It's been a little while since we've seen you on ${BRAND_NAME}, and we wanted to reach out personally.
+        </p>
+        <div style="background:#eef2ff;border-left:4px solid ${BRAND_COLOR};padding:16px;margin:20px 0;">
+            <p style="margin:0;color:#3730a3;font-size:14px;line-height:1.6;">
+                Behind the scenes, our team is working hard to bring <strong>more events and more gigs</strong> onto the platform every week — more ways for you to gain experience and earn.
+            </p>
+        </div>
+        <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">
+            Don't lose hope — the right opportunity is often just one login away. Come back and see what's waiting for you.
+        </p>
+        <div style="text-align:center;margin:28px 0 8px;">
+            <a href="https://apps.apple.com/in/app/partfind/id6774319071" style="display:inline-block;background:${BRAND_COLOR};color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;">
+                Open ${BRAND_NAME} &amp; Browse Gigs
+            </a>
+        </div>
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;"/>
+        <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.5;text-align:center;">
+            You're receiving this because your ${BRAND_NAME} account has been inactive for a while. We just don't want you to miss out.
+        </p>
+    `);
+
+    return { subject, text, html };
+}
+
+/**
+ * Win-back email for inactive recruiters/organizers — encourages them to
+ * post their next requirement.
+ */
+export function winBackRecruiterTemplate(userName: string): { subject: string; text: string; html: string } {
+    const subject = `Your next event deserves great staff — come back to ${BRAND_NAME}`;
+
+    const text = `Hi ${userName}, it's been a while since your last visit to ${BRAND_NAME}. We're growing our pool of verified, reliable event staff every week — post your next requirement and get matched fast.`;
+
+    const html = baseLayout(`
+        <h2 style="margin:0 0 16px;color:${BRAND_COLOR};font-size:19px;font-weight:700;">Planning an event soon, ${userName}?</h2>
+        <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">
+            It's been a little while since we've seen you on ${BRAND_NAME}, and we wanted to check in.
+        </p>
+        <div style="background:#eef2ff;border-left:4px solid ${BRAND_COLOR};padding:16px;margin:20px 0;">
+            <p style="margin:0;color:#3730a3;font-size:14px;line-height:1.6;">
+                We're working hard to grow our pool of <strong>verified, reliable staff</strong> — hosts, promoters, volunteers and more — so your next event is fully staffed without the last-minute scramble.
+            </p>
+        </div>
+        <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">
+            Post a requirement and start receiving applications from trusted candidates within hours.
+        </p>
+        <div style="text-align:center;margin:28px 0 8px;">
+            <a href="https://apps.apple.com/in/app/partfind/id6774319071" style="display:inline-block;background:${BRAND_COLOR};color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;">
+                Post a Requirement
+            </a>
+        </div>
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;"/>
+        <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.5;text-align:center;">
+            You're receiving this because your ${BRAND_NAME} account has been inactive for a while. We just don't want you to miss out.
+        </p>
     `);
 
     return { subject, text, html };
