@@ -73,9 +73,6 @@ app.use("/api/v1/blogs", blogRoutes);
 app.use("/api/v1/website", websiteRoutes);
 
 
-// Legacy route - consider migrating this to proper controller pattern
-app.use("/api/v1/seed", require("./routes/user"));
-
 // Static file serving from external upload directory
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "uploads";
 app.use("/api/v1/images/profile", express.static(path.join(UPLOAD_DIR, "profile")));
