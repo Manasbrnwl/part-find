@@ -26,6 +26,8 @@ model User {
   updatedAt     DateTime  @updatedAt
   height        Float?
   is_active     Boolean   @default(true)
+  lastActiveAt       DateTime? // set on successful login; used to detect inactive users for win-back emails
+  lastWinBackEmailAt DateTime? // last time a win-back re-engagement email/push was sent
   english_level String?
   role          Role?     @default(USER)
   skills        String[]  @default([])

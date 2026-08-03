@@ -10,6 +10,7 @@ export enum NotificationType {
     LOW_RATING_WARNING = "LOW_RATING_WARNING",
     ABSENT_WARNING = "ABSENT_WARNING",
     COMPLETION_CERTIFICATE = "COMPLETION_CERTIFICATE",
+    WIN_BACK_SWEEP = "WIN_BACK_SWEEP",
 }
 
 export interface JobReminderData {
@@ -193,6 +194,25 @@ export async function queueAbsentWarning(data: AbsentWarningData) {
         }
     );
     logger.info(`Absent warning queued for user ${data.userId}`);
+}
+
+/**
+ * Register the recurring win-back sweep as a BullMQ repeatable job.
+ * Idempotent — calling this on every server start does not create
+ * duplicate schedules, BullMQ dedupes repeatable jobs by their repeat
+ * config. Runs once daily; the actual per-user query/send work happens
+ * inside a single job (not one job per user) to keep Redis usage low.
+ */
+export async function scheduleWinBackSweep() {
+    await getNotificationQueue().add(
+        NotificationType.WIN_BACK_SWEEP,
+        {},
+        {
+            jobId: "win-back-sweep-daily",
+            repeat: { pattern: "0 10 * * *" }, // every day at 10:00 server time
+        }
+    );
+    logger.info("Win-back sweep scheduled (daily, 10:00)");
 }
 
 /**
