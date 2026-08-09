@@ -4,7 +4,7 @@ info:
   description: Job platform API for connecting users with gig work opportunities
   version: 1.0.0
   contact:
-    email: support@part-find.com
+    email: official@part-find.com
 
 servers:
   - url: http://localhost:4000

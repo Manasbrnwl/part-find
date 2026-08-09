@@ -23,7 +23,7 @@ const FAINT = "#9ca3af";       // footer / fine print
 const HAIRLINE = "#e5e7eb";    // dividers / borders
 const PAGE_BG = "#f4f5f7";     // outer canvas
 
-const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@part-find.org";
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "official@part-find.org";
 
 /**
  * Shared shell: outer canvas, brand accent bar, logo header, body slot, footer.
