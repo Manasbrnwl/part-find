@@ -308,10 +308,19 @@ export const loginGoogleUser = asyncHandler(
       let decodedToken;
       try {
         decodedToken = await admin.auth().verifyIdToken(idToken, true);
-      } catch (verifyError) {
+      } catch (verifyError: any) {
+        // Log the real failure reason — otherwise every cause (expired,
+        // revoked, project mismatch, clock skew) looks identical to callers.
+        logger.warn("firebase-signin verifyIdToken failed", {
+          code: verifyError?.code,
+          message: verifyError?.message,
+        });
         return res.status(401).json({
           success: false,
           message: "Invalid or expired authentication token",
+          ...(process.env.NODE_ENV === "development" && {
+            debug: verifyError?.code || verifyError?.message,
+          }),
         });
       }
 
