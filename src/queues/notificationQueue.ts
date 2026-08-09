@@ -11,6 +11,16 @@ export enum NotificationType {
     ABSENT_WARNING = "ABSENT_WARNING",
     COMPLETION_CERTIFICATE = "COMPLETION_CERTIFICATE",
     OTP_EMAIL = "OTP_EMAIL",
+    INACTIVE_SCAN = "INACTIVE_SCAN",
+    INACTIVE_USER_REMINDER = "INACTIVE_USER_REMINDER",
+}
+
+export interface InactiveReminderData {
+    userId: string;
+    userName: string | null;
+    userEmail: string | null;
+    role: string | null;
+    fcmToken?: string | null;
 }
 
 export interface JobReminderData {
@@ -229,5 +239,35 @@ export async function queueCompletionCertificate(data: CompletionCertificateData
         }
     );
     logger.info(`Completion certificate queued for user ${data.userId}`);
+}
+
+/**
+ * Register (idempotently) the recurring job that scans for inactive users.
+ * Runs once per day; the worker's INACTIVE_SCAN handler does the querying.
+ * Cron + timezone are configurable via env (defaults to 10:00 Asia/Kolkata).
+ */
+export async function scheduleInactiveUserScan() {
+    const pattern = process.env.INACTIVE_SCAN_CRON || "0 10 * * *";
+    const tz = process.env.INACTIVE_SCAN_TZ || "Asia/Kolkata";
+    await getNotificationQueue().upsertJobScheduler(
+        "inactive-user-scan",
+        { pattern, tz },
+        { name: NotificationType.INACTIVE_SCAN, data: {} }
+    );
+    logger.info(`Inactive-user scan scheduled (cron "${pattern}" ${tz})`);
+}
+
+/**
+ * Queue a re-engagement reminder for a single inactive user.
+ */
+export async function queueInactiveReminder(data: InactiveReminderData) {
+    await getNotificationQueue().add(
+        NotificationType.INACTIVE_USER_REMINDER,
+        data,
+        {
+            // One reminder per user per day at most, even if a scan re-runs.
+            jobId: `inactive-${data.userId}-${new Date().toISOString().slice(0, 10)}`,
+        }
+    );
 }
 

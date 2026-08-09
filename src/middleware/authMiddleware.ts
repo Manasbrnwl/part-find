@@ -69,6 +69,16 @@ export const authenticate = async (
     // Add userId to request object
     req.userId = user.id;
 
+    // Record activity for inactivity reminders. Throttled to at most once every
+    // 6 hours per user, and fire-and-forget so it never delays the response.
+    const ACTIVITY_STAMP_INTERVAL_MS = 6 * 60 * 60 * 1000;
+    const lastActive = user.last_active_at ? new Date(user.last_active_at).getTime() : 0;
+    if (Date.now() - lastActive > ACTIVITY_STAMP_INTERVAL_MS) {
+      prisma.user
+        .update({ where: { id: user.id }, data: { last_active_at: new Date() } })
+        .catch((err) => console.error("Failed to stamp last_active_at", err?.message));
+    }
+
     next();
   } catch (error: any) {
     // Handle JWT specific errors

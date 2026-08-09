@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import { logger } from "../logger";
+import { logoAttachment } from "./logoAsset";
 
 dotenv.config();
 
@@ -94,7 +95,9 @@ exports.sendEmailNotification = async (
       to: email,
       subject,
       text,
-      html
+      html,
+      // Inline brand logo, referenced in the templates as cid:partfind-logo
+      attachments: [logoAttachment()],
     };
 
     const info = await transporter.sendMail(mailOptions);

@@ -24,6 +24,8 @@ model User {
   country       String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  last_active_at   DateTime? // last time the user made an authenticated request (for inactivity reminders)
+  last_reminded_at DateTime? // last time we sent an inactivity re-engagement reminder
   height        Float?
   is_active     Boolean   @default(true)
   english_level String?

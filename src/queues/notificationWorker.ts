@@ -2,7 +2,8 @@ import { Worker, Job } from "bullmq";
 import { redisConnection } from "./config";
 import { logger } from "../../utils/logger";
 const { sendEmailNotification, transporter } = require("../../utils/notification/email.notification");
-import { lowRatingWarningTemplate, absentWarningTemplate, completionCertificateTemplate, generateCertificateHtml, otpEmailTemplate } from "../../utils/notification/emailTemplates";
+import { lowRatingWarningTemplate, absentWarningTemplate, completionCertificateTemplate, generateCertificateHtml, otpEmailTemplate, inactiveReminderTemplate } from "../../utils/notification/emailTemplates";
+import { logoAttachment } from "../../utils/notification/logoAsset";
 import { sendFCMNotification, sendFCMToMultipleTokens } from "../../utils/firebase";
 import {
     NotificationType,
@@ -14,7 +15,13 @@ import {
     AbsentWarningData,
     CompletionCertificateData,
     OtpEmailData,
+    InactiveReminderData,
+    queueInactiveReminder,
+    scheduleInactiveUserScan,
 } from "./notificationQueue";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
 
 let notificationWorker: Worker | null = null;
 
@@ -186,13 +193,94 @@ async function processCompletionCertificate(data: CompletionCertificateData) {
         subject,
         text,
         html,
-        attachments: [{
-            filename: `certificate-${data.postTitle.slice(0, 20).replace(/\s+/g, "-")}.pdf`,
-            content: pdfBuffer,
-            contentType: "application/pdf",
-        }],
+        attachments: [
+            logoAttachment(), // inline brand logo (cid:partfind-logo)
+            {
+                filename: `certificate-${data.postTitle.slice(0, 20).replace(/\s+/g, "-")}.pdf`,
+                content: pdfBuffer,
+                contentType: "application/pdf",
+            },
+        ],
     });
     logger.info(`Certificate email with PDF sent to ${data.userEmail}`);
+}
+
+/**
+ * Scan for users who have been inactive past the threshold and enqueue a
+ * re-engagement reminder for each. Runs on a daily schedule.
+ *
+ * A user is reminded at most once per inactivity streak: once we remind them,
+ * last_reminded_at moves past last_active_at, so they won't be picked again
+ * until they return (which advances last_active_at) and go idle once more.
+ */
+async function processInactiveScan() {
+    const days = parseInt(process.env.INACTIVE_REMINDER_DAYS || "5", 10);
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const candidates = await prisma.user.findMany({
+        where: {
+            is_active: true,
+            role: { in: ["USER", "RECRUITER"] },
+            last_active_at: { not: null, lt: cutoff },
+        },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            fcm_token: true,
+            last_active_at: true,
+            last_reminded_at: true,
+        },
+    });
+
+    // Only those not already reminded for the current inactivity streak.
+    const toRemind = candidates.filter(
+        (u) => !u.last_reminded_at || (u.last_active_at && u.last_reminded_at < u.last_active_at)
+    );
+
+    logger.info(`Inactive scan: ${candidates.length} idle >${days}d, ${toRemind.length} to remind`);
+
+    for (const u of toRemind) {
+        await queueInactiveReminder({
+            userId: u.id,
+            userName: u.name,
+            userEmail: u.email,
+            role: u.role,
+            fcmToken: u.fcm_token,
+        });
+    }
+}
+
+/**
+ * Send a re-engagement reminder to one inactive user (email + push), then
+ * stamp last_reminded_at so they aren't reminded again this streak.
+ */
+async function processInactiveReminder(data: InactiveReminderData) {
+    // Email
+    if (data.userEmail) {
+        const { subject, text, html } = inactiveReminderTemplate(data.userName, data.role);
+        await sendEmailNotification(data.userEmail, subject, text, html);
+    }
+
+    // Push
+    if (data.fcmToken) {
+        const isRecruiter = String(data.role).toUpperCase() === "RECRUITER";
+        await sendFCMNotification(data.fcmToken, {
+            title: isRecruiter ? "Your next hire is a tap away 👋" : "New gigs are waiting 👋",
+            body: isRecruiter
+                ? "Post a gig and start receiving applications today."
+                : "Fresh opportunities are live — come find your next gig.",
+            reminderId: data.userId,
+            type: NotificationType.INACTIVE_USER_REMINDER,
+        }).catch((err) => logger.warn(`Inactive push failed for ${data.userId}: ${err?.message}`));
+    }
+
+    await prisma.user.update({
+        where: { id: data.userId },
+        data: { last_reminded_at: new Date() },
+    });
+    logger.info(`Inactive reminder sent to user ${data.userId}`);
 }
 
 export function startNotificationWorker() {
@@ -238,6 +326,14 @@ export function startNotificationWorker() {
                         await processOtpEmail(job.data as OtpEmailData);
                         break;
 
+                    case NotificationType.INACTIVE_SCAN:
+                        await processInactiveScan();
+                        break;
+
+                    case NotificationType.INACTIVE_USER_REMINDER:
+                        await processInactiveReminder(job.data as InactiveReminderData);
+                        break;
+
                     default:
                         logger.warn(`Unknown notification type: ${job.name}`);
                 }
@@ -273,6 +369,11 @@ export function startNotificationWorker() {
         notificationWorker.on("ready", () => {
             logger.info("Notification worker is ready and connected");
         });
+
+        // Register the recurring inactive-user scan (idempotent upsert).
+        scheduleInactiveUserScan().catch((err) =>
+            logger.error("Failed to schedule inactive-user scan", { error: err?.message })
+        );
 
         return notificationWorker;
     } catch (err: unknown) {
