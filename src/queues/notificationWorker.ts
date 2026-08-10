@@ -214,7 +214,16 @@ async function processCompletionCertificate(data: CompletionCertificateData) {
  * until they return (which advances last_active_at) and go idle once more.
  */
 async function processInactiveScan() {
+    // Disabled by default. This can mass-send and overwhelm the SMTP provider
+    // (GoDaddy Workspace has a low daily limit) — only run when explicitly
+    // enabled AND capped per run. Re-enable only with a provider that can take
+    // the volume (e.g. SES/SendGrid) and appropriate throttling.
+    if (process.env.INACTIVE_REMINDER_ENABLED !== "true") {
+        logger.info("Inactive scan skipped (INACTIVE_REMINDER_ENABLED != 'true')");
+        return;
+    }
     const days = parseInt(process.env.INACTIVE_REMINDER_DAYS || "5", 10);
+    const maxPerRun = parseInt(process.env.INACTIVE_REMINDER_MAX_PER_RUN || "50", 10);
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
     const candidates = await prisma.user.findMany({
@@ -232,14 +241,17 @@ async function processInactiveScan() {
             last_active_at: true,
             last_reminded_at: true,
         },
+        orderBy: { last_active_at: "asc" },
+        take: maxPerRun * 4,
     });
 
-    // Only those not already reminded for the current inactivity streak.
-    const toRemind = candidates.filter(
-        (u) => !u.last_reminded_at || (u.last_active_at && u.last_reminded_at < u.last_active_at)
-    );
+    // Only those not already reminded for the current inactivity streak,
+    // hard-capped so a single run can never flood the mail provider.
+    const toRemind = candidates
+        .filter((u) => !u.last_reminded_at || (u.last_active_at && u.last_reminded_at < u.last_active_at))
+        .slice(0, maxPerRun);
 
-    logger.info(`Inactive scan: ${candidates.length} idle >${days}d, ${toRemind.length} to remind`);
+    logger.info(`Inactive scan: ${candidates.length} idle >${days}d, ${toRemind.length} to remind (cap ${maxPerRun})`);
 
     for (const u of toRemind) {
         await queueInactiveReminder({
@@ -257,30 +269,43 @@ async function processInactiveScan() {
  * stamp last_reminded_at so they aren't reminded again this streak.
  */
 async function processInactiveReminder(data: InactiveReminderData) {
+    let delivered = false;
+
     // Email
     if (data.userEmail) {
         const { subject, text, html } = inactiveReminderTemplate(data.userName, data.role);
-        await sendEmailNotification(data.userEmail, subject, text, html);
+        const ok = await sendEmailNotification(data.userEmail, subject, text, html);
+        delivered = delivered || ok === true;
     }
 
     // Push
     if (data.fcmToken) {
         const isRecruiter = String(data.role).toUpperCase() === "RECRUITER";
-        await sendFCMNotification(data.fcmToken, {
+        const pushOk = await sendFCMNotification(data.fcmToken, {
             title: isRecruiter ? "Your next hire is a tap away 👋" : "New gigs are waiting 👋",
             body: isRecruiter
                 ? "Post a gig and start receiving applications today."
                 : "Fresh opportunities are live — come find your next gig.",
             reminderId: data.userId,
             type: NotificationType.INACTIVE_USER_REMINDER,
-        }).catch((err) => logger.warn(`Inactive push failed for ${data.userId}: ${err?.message}`));
+        }).then(() => true).catch((err) => {
+            logger.warn(`Inactive push failed for ${data.userId}: ${err?.message}`);
+            return false;
+        });
+        delivered = delivered || pushOk === true;
     }
 
-    await prisma.user.update({
-        where: { id: data.userId },
-        data: { last_reminded_at: new Date() },
-    });
-    logger.info(`Inactive reminder sent to user ${data.userId}`);
+    // Only mark as reminded if something actually went out — otherwise a broken
+    // channel would silently "remind" everyone without delivering anything.
+    if (delivered) {
+        await prisma.user.update({
+            where: { id: data.userId },
+            data: { last_reminded_at: new Date() },
+        });
+        logger.info(`Inactive reminder sent to user ${data.userId}`);
+    } else {
+        logger.warn(`Inactive reminder NOT delivered for ${data.userId} — leaving eligible`);
+    }
 }
 
 export function startNotificationWorker() {
@@ -370,10 +395,15 @@ export function startNotificationWorker() {
             logger.info("Notification worker is ready and connected");
         });
 
-        // Register the recurring inactive-user scan (idempotent upsert).
-        scheduleInactiveUserScan().catch((err) =>
-            logger.error("Failed to schedule inactive-user scan", { error: err?.message })
-        );
+        // Register the recurring inactive-user scan ONLY when explicitly enabled.
+        // Off by default to avoid mass-sending through a rate-limited SMTP provider.
+        if (process.env.INACTIVE_REMINDER_ENABLED === "true") {
+            scheduleInactiveUserScan().catch((err) =>
+                logger.error("Failed to schedule inactive-user scan", { error: err?.message })
+            );
+        } else {
+            logger.info("Inactive-user scan not scheduled (INACTIVE_REMINDER_ENABLED != 'true')");
+        }
 
         return notificationWorker;
     } catch (err: unknown) {
