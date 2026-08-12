@@ -15,6 +15,7 @@ import enquiryRoutes from "./routes/enquiryRoutes";
 import adminRoutes from "./routes/adminRoutes";
 import blogRoutes from "./routes/blogRoutes";
 import websiteRoutes from "./routes/websiteRoutes";
+import legalRoutes from "./routes/legalRoutes";
 import { startNotificationWorker } from "./queues/notificationWorker";
 import { logger, morganStream } from "../utils/logger";
 import swaggerUi from 'swagger-ui-express';
@@ -71,6 +72,7 @@ app.use("/api/v1/enquiries", enquiryRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/blogs", blogRoutes);
 app.use("/api/v1/website", websiteRoutes);
+app.use("/api/v1/legal", legalRoutes);
 
 
 // Legacy route - consider migrating this to proper controller pattern
