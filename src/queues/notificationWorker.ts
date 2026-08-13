@@ -24,6 +24,7 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 let notificationWorker: Worker | null = null;
+let otpEmailWorker: Worker | null = null;
 
 /**
  * Process job reminder notification
@@ -160,19 +161,25 @@ async function processOtpEmail(data: OtpEmailData) {
 async function processCompletionCertificate(data: CompletionCertificateData) {
     const issuedAt = new Date(data.issuedAt);
 
-    // 1. Generate PDF
+    // 1. Generate PDF (headless Chrome). Race against a hard timeout so a hung
+    //    render fails fast instead of stalling the worker and jamming the queue.
     const htmlContent = generateCertificateHtml(data.userName, data.postTitle, data.rating, data.recruiterName, issuedAt);
     const htmlPdfNode = require("html-pdf-node");
-    const pdfBuffer: Buffer = await new Promise((resolve, reject) => {
-        htmlPdfNode.generatePdf(
-            { content: htmlContent },
-            { format: "A4", landscape: true, printBackground: true },
-            (err: Error | null, buffer: Buffer) => {
-                if (err) reject(err);
-                else resolve(buffer);
-            }
-        );
-    });
+    const pdfBuffer: Buffer = await Promise.race([
+        new Promise<Buffer>((resolve, reject) => {
+            htmlPdfNode.generatePdf(
+                { content: htmlContent },
+                { format: "A4", landscape: true, printBackground: true },
+                (err: Error | null, buffer: Buffer) => {
+                    if (err) reject(err);
+                    else resolve(buffer);
+                }
+            );
+        }),
+        new Promise<Buffer>((_, reject) =>
+            setTimeout(() => reject(new Error("Certificate PDF generation timed out")), 45000)
+        ),
+    ]);
 
     // 2. Send FCM push notification
     if (data.fcmToken) {
@@ -394,6 +401,35 @@ export function startNotificationWorker() {
         notificationWorker.on("ready", () => {
             logger.info("Notification worker is ready and connected");
         });
+
+        // Dedicated OTP-email worker on its own queue, isolated from the heavy
+        // notification jobs above. Higher concurrency and light (SMTP-only) work
+        // so account-critical login codes are never blocked or delayed.
+        if (!otpEmailWorker) {
+            otpEmailWorker = new Worker(
+                "otp-emails",
+                async (job: Job) => {
+                    logger.info(`Processing OTP email job (${job.id})`);
+                    await processOtpEmail(job.data as OtpEmailData);
+                },
+                {
+                    connection: redisConnection,
+                    concurrency: 5,
+                    lockDuration: 60000,
+                    drainDelay: 5000,
+                }
+            );
+            otpEmailWorker.on("failed", (job, err) => {
+                logger.error(`OTP email job ${job?.id} failed`, { error: err.message });
+            });
+            otpEmailWorker.on("error", (err) => {
+                logger.error("OTP email worker error", { error: err.message });
+            });
+            otpEmailWorker.on("ready", () => {
+                logger.info("OTP email worker is ready and connected");
+            });
+            logger.info("OTP email worker initialized");
+        }
 
         // Register the recurring inactive-user scan ONLY when explicitly enabled.
         // Off by default to avoid mass-sending through a rate-limited SMTP provider.

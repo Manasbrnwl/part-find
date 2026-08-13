@@ -114,6 +114,32 @@ function getNotificationQueue(): Queue {
     return _notificationQueue;
 }
 
+// Dedicated queue for OTP emails. Login codes are account-critical and must
+// never be blocked behind heavy/slow notification jobs (PDF certificates, FCM
+// broadcasts, etc.), so they run on their own queue + worker.
+let _otpEmailQueue: Queue | null = null;
+
+export function getOtpEmailQueue(): Queue {
+    if (!_otpEmailQueue) {
+        _otpEmailQueue = new Queue("otp-emails", {
+            connection: redisConnection,
+            defaultJobOptions: {
+                attempts: 3,
+                backoff: { type: "exponential", delay: 3000 },
+                removeOnComplete: true,
+                removeOnFail: 20,
+            },
+        });
+
+        _otpEmailQueue.on("error", (err) => {
+            logger.error("OTP email queue error", { error: err });
+        });
+
+        logger.info("OTP email queue initialized");
+    }
+    return _otpEmailQueue;
+}
+
 /**
  * Schedule a job reminder notification for 1 day before the job starts
  */
@@ -217,7 +243,7 @@ export async function queueAbsentWarning(data: AbsentWarningData) {
  * endpoint from blocking on the SMTP round-trip)
  */
 export async function queueOtpEmail(data: OtpEmailData) {
-    await getNotificationQueue().add(
+    await getOtpEmailQueue().add(
         NotificationType.OTP_EMAIL,
         data,
         {
