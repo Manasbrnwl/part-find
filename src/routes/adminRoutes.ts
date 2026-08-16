@@ -6,6 +6,7 @@ import {
   switchUserRole,
   getAllPosts,
   togglePostStatus,
+  updatePostApproval,
   getAllApplications,
   deleteApplication,
   updateApplicationStatus,
@@ -38,6 +39,7 @@ router.post("/users/:id/notify", sendUserNotification);
 
 router.get("/posts", getAllPosts);
 router.patch("/posts/:id/toggle", togglePostStatus);
+router.patch("/posts/:id/approval", updatePostApproval);
 
 router.get("/applications", getAllApplications);
 router.delete("/applications/:id", deleteApplication);

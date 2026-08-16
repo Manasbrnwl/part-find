@@ -1,5 +1,5 @@
 import express from "express";
-import { PrismaClient, Status } from "@prisma/client";
+import { PrismaClient, Status, PostApprovalStatus } from "@prisma/client";
 import { Request, Response } from "express";
 import { threadCpuUsage } from "node:process";
 import {
@@ -19,6 +19,43 @@ import { logger } from "../../utils/logger";
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+/**
+ * Broadcast a "new job posted" FCM push to all active USER accounts (except the
+ * poster). Called when a post becomes live — i.e. on admin approval, or at
+ * creation when an admin posts (auto-approved). Fire-and-forget.
+ */
+export async function broadcastNewJob(post: {
+  id: string;
+  title: string;
+  company_name: string | null;
+  location: string | null;
+  userId: string;
+}) {
+  const usersWithTokens = await prisma.user.findMany({
+    where: {
+      is_active: true,
+      fcm_token: { not: null },
+      role: "USER",
+      id: { not: post.userId }, // Exclude the poster
+    },
+    select: { fcm_token: true },
+  });
+
+  const fcmTokens = usersWithTokens
+    .map((u) => u.fcm_token)
+    .filter((token): token is string => Boolean(token));
+
+  if (fcmTokens.length > 0) {
+    await queueNewJobNotification({
+      postId: post.id,
+      postTitle: post.title,
+      companyName: post.company_name || "A company",
+      location: post.location || "TBD",
+      fcmTokens,
+    });
+  }
+}
 
 export const createPosts = asyncHandler(async (req: Request, res: Response) => {
   const {
@@ -71,9 +108,21 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
     throw handleValidationError("Payment for boys is required when boys vacancies are specified");
   }
 
+  // New posts require admin approval before going live. Admin-created posts are
+  // auto-approved (no point in an admin approving their own post).
+  const creator = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  const autoApprove = creator?.role === "ADMIN";
+
   const post = await prisma.post.create({
     data: {
       userId: userId,
+      approval_status: autoApprove
+        ? PostApprovalStatus.APPROVED
+        : PostApprovalStatus.PENDING,
+      approved_at: autoApprove ? new Date() : null,
       title: title,
       content: content,
       role: designation || "No designation",
@@ -109,34 +158,19 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
     });
   }
 
-  // Queue FCM notification to all active users with FCM tokens and role USER
-  const usersWithTokens = await prisma.user.findMany({
-    where: {
-      is_active: true,
-      fcm_token: { not: null },
-      role: "USER",
-      id: { not: userId }, // Exclude the recruiter who created the post
-    },
-    select: { fcm_token: true },
-  });
-
-  const fcmTokens = usersWithTokens
-    .map((u) => u.fcm_token)
-    .filter((token): token is string => Boolean(token));
-
-  if (fcmTokens.length > 0) {
-    queueNewJobNotification({
-      postId: post.id,
-      postTitle: post.title,
-      companyName: company_name || "A company",
-      location: location || "TBD",
-      fcmTokens,
-    }).catch((err) => logger.error("Failed to queue new job notification", { error: err }));
+  // Only broadcast to users once the post is actually live (auto-approved admin
+  // posts). Recruiter posts broadcast later, when an admin approves them.
+  if (autoApprove) {
+    broadcastNewJob(post).catch((err) =>
+      logger.error("Failed to queue new job notification", { error: err })
+    );
   }
 
   res.status(201).json({
     success: true,
-    message: "Post created successfully",
+    message: autoApprove
+      ? "Post created successfully"
+      : "Post submitted and is pending admin approval",
     data: post,
   });
 });
@@ -268,6 +302,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
       where: {
         startDate: { gt: new Date() },
         is_active: true,
+        approval_status: PostApprovalStatus.APPROVED,
       },
       select: {
         id: true,
@@ -324,6 +359,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
       where: {
         startDate: { gt: new Date() },
         is_active: true,
+        approval_status: PostApprovalStatus.APPROVED,
       },
     }),
   ]);
@@ -361,6 +397,7 @@ export const getPostById = asyncHandler(async (req: Request, res: Response) => {
     where: {
       id,
       is_active: true,
+      approval_status: PostApprovalStatus.APPROVED,
     },
   });
 
@@ -391,6 +428,7 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
     where: {
       id,
       is_active: true,
+      approval_status: PostApprovalStatus.APPROVED,
     },
   });
 
@@ -873,6 +911,7 @@ export const savePost = asyncHandler(async (req: Request, res: Response) => {
     where: {
       id: postId,
       is_active: true,
+      approval_status: PostApprovalStatus.APPROVED,
     },
   });
 
@@ -914,6 +953,7 @@ export const getSavePosts = asyncHandler(
         post: {
           is: {
             is_active: true,
+            approval_status: PostApprovalStatus.APPROVED,
             endDate: { gte: new Date() },
           },
         },
@@ -1007,6 +1047,7 @@ export const getNearbyPosts = asyncHandler(
       where: {
         endDate: { gt: new Date() },
         is_active: true,
+        approval_status: PostApprovalStatus.APPROVED,
         latitude: { not: null },
         longitude: { not: null },
       },

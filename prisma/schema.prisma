@@ -140,6 +140,13 @@ model Post {
   latitude       Float?
   longitude      Float?
   category       String?
+
+  // Admin moderation: a new post is PENDING and NOT shown to users until an
+  // admin approves it. Existing posts are backfilled to APPROVED in the migration.
+  approval_status PostApprovalStatus @default(PENDING)
+  approval_remark String?            // admin note / rejection reason
+  approved_at     DateTime?
+
   user           User           @relation(fields: [userId], references: [id])
   PostCategory   PostCategory[]
   comments       postApplied[]
@@ -216,6 +223,12 @@ enum Status {
   REJECTED
   CANCELLED
   NOT_PRESENT
+}
+
+enum PostApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model Rating {

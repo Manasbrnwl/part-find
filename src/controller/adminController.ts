@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, PostApprovalStatus } from "@prisma/client";
 import { asyncHandler, handleNotFoundError, handleValidationError } from "../utils/errorHandler";
 import { logger } from "../../utils/logger";
 import { sendFCMNotification } from "../../utils/firebase";
+import { broadcastNewJob } from "./postController";
 
 const prisma = new PrismaClient();
 
@@ -93,10 +94,18 @@ export const toggleUserStatus = asyncHandler(async (req: Request, res: Response)
 });
 
 /**
- * Get all job posts
+ * Get all job posts. Optional ?status=PENDING|APPROVED|REJECTED filter — handy
+ * for the moderation queue (?status=PENDING).
  */
 export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
+  const status = req.query.status as string | undefined;
+  const where =
+    status && status in PostApprovalStatus
+      ? { approval_status: status as PostApprovalStatus }
+      : {};
+
   const posts = await prisma.post.findMany({
+    where,
     orderBy: { createdAt: "desc" },
     include: {
       user: {
@@ -143,6 +152,52 @@ export const togglePostStatus = asyncHandler(async (req: Request, res: Response)
   res.status(200).json({
     success: true,
     message: `Job post ${updatedPost.is_active ? 'activated' : 'deactivated'} successfully`,
+    data: updatedPost,
+  });
+});
+
+/**
+ * Approve or reject a job post. A post is only visible to users once APPROVED.
+ * On the first transition to APPROVED, the "new job posted" broadcast fires.
+ * Body: { status: "APPROVED" | "REJECTED", remark?: string }
+ */
+export const updatePostApproval = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const { status, remark } = req.body;
+
+  if (status !== "APPROVED" && status !== "REJECTED") {
+    throw handleValidationError('status must be either "APPROVED" or "REJECTED"');
+  }
+
+  const post = await prisma.post.findUnique({ where: { id } });
+  if (!post) {
+    throw handleNotFoundError("Post");
+  }
+
+  const wasApproved = post.approval_status === PostApprovalStatus.APPROVED;
+
+  const updatedPost = await prisma.post.update({
+    where: { id },
+    data: {
+      approval_status: status as PostApprovalStatus,
+      approval_remark: status === "REJECTED" ? (remark ?? null) : null,
+      approved_at: status === "APPROVED" ? new Date() : null,
+    },
+  });
+
+  // Broadcast only on the first time a post goes live (avoid re-notifying if an
+  // already-approved post is re-approved).
+  if (status === "APPROVED" && !wasApproved) {
+    broadcastNewJob(updatedPost).catch((err) =>
+      logger.error("Failed to broadcast approved job", { error: err })
+    );
+  }
+
+  logger.info(`Admin set post ${id} approval to ${status}`);
+
+  res.status(200).json({
+    success: true,
+    message: `Job post ${status === "APPROVED" ? "approved" : "rejected"} successfully`,
     data: updatedPost,
   });
 });
