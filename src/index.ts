@@ -17,6 +17,7 @@ import blogRoutes from "./routes/blogRoutes";
 import websiteRoutes from "./routes/websiteRoutes";
 import legalRoutes from "./routes/legalRoutes";
 import referralRoutes from "./routes/referralRoutes";
+import imageRoutes from "./routes/imageRoutes";
 import { startNotificationWorker } from "./queues/notificationWorker";
 import { logger, morganStream } from "../utils/logger";
 import swaggerUi from 'swagger-ui-express';
@@ -80,10 +81,9 @@ app.use("/api/v1/referral", referralRoutes);
 // Legacy route - consider migrating this to proper controller pattern
 app.use("/api/v1/seed", require("./routes/user"));
 
-// Static file serving from external upload directory
-const UPLOAD_DIR = process.env.UPLOAD_DIR || "uploads";
-app.use("/api/v1/images/profile", express.static(path.join(UPLOAD_DIR, "profile")));
-app.use("/api/v1/images/recruiter", express.static(path.join(UPLOAD_DIR, "recruiter")));
+// Image serving — proxies profile/recruiter images from S3 (or local disk in
+// fallback mode). Same /api/v1/images/... URLs as before, so clients are unchanged.
+app.use("/api/v1/images", imageRoutes);
 
 // Handle 404
 app.use((_req, res) => {

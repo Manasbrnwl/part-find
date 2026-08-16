@@ -16,53 +16,44 @@ import {
 } from "../controller/userController";
 import multer from "multer";
 import sharp from "sharp";
-import fs from "fs";
-import path from "path";
-import { ensureDirExists } from "../../utils/default";
+import { storeImage } from "../lib/storage";
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// Use memoryStorage so we can compress with sharp before writing to disk
+// Use memoryStorage so we can compress with sharp before storing
 const memoryUpload = multer({ storage: multer.memoryStorage() });
 
 /**
- * Compress and save images using sharp.
- * - JPEG/JPG/WEBP: resize to max 1200px wide, 80% quality
- * - PNG: convert to JPEG  at 80% quality (reduces file size significantly)
- * - GIF/other: pass through as-is
+ * Compress an uploaded image with sharp and store it under the given category
+ * (S3 key prefix, or local subdir in fallback mode). Returns the stored filename.
+ * - resize to max 1200px wide, re-encode as progressive JPEG at 80% quality
  */
-async function compressAndSave(
+async function compressAndStore(
   file: Express.Multer.File,
-  destDir: string
+  category: string
 ): Promise<string> {
-  ensureDirExists(destDir);
   const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-  // Always output as JPEG for consistent compression
   const filename = `${file.fieldname}-${uniqueSuffix}.jpg`;
-  const filePath = path.join(destDir, filename);
 
-  await sharp(file.buffer)
+  const buffer = await sharp(file.buffer)
     .resize({ width: 1200, withoutEnlargement: true })
     .jpeg({ quality: 80, progressive: true })
-    .toFile(filePath);
+    .toBuffer();
 
+  await storeImage(category, filename, buffer, "image/jpeg");
   return filename;
 }
 
-/** Middleware: compress user profile images before they reach the controller */
+/** Middleware: compress + store user profile images before the controller */
 async function compressProfileImages(req: Request, _res: Response, next: NextFunction) {
   const files = req.files as { profile_image?: Express.Multer.File[] } | undefined;
   if (!files?.profile_image?.length) return next();
 
-  const destDir = path.join(process.env.UPLOAD_DIR || "uploads", "profile");
-
   for (const file of files.profile_image) {
     try {
-      const savedFilename = await compressAndSave(file, destDir);
-      // Mutate the multer file object so downstream controller finds the saved filename
-      file.filename = savedFilename;
-      file.path = path.join(destDir, savedFilename);
+      // Mutate the multer file so the controller finds the stored filename
+      file.filename = await compressAndStore(file, "profile");
     } catch {
       return next(new Error(`Failed to process image: ${file.originalname}`));
     }
@@ -71,38 +62,28 @@ async function compressProfileImages(req: Request, _res: Response, next: NextFun
 }
 
 /**
- * Middleware: compress the Aadhaar image into a PRIVATE dir (not served by
- * express.static). Only reachable via the authenticated aadhaar routes.
+ * Middleware: compress + store the Aadhaar image under the PRIVATE "aadhaar"
+ * category. Only reachable via the authenticated aadhaar routes.
  */
 async function compressAadhaarImage(req: Request, _res: Response, next: NextFunction) {
   const files = req.files as { aadhaar_image?: Express.Multer.File[] } | undefined;
   if (!files?.aadhaar_image?.length) return next();
 
-  const destDir =
-    process.env.AADHAAR_UPLOAD_DIR ||
-    path.join(process.env.UPLOAD_DIR || "uploads", "aadhaar");
-
   try {
-    const savedFilename = await compressAndSave(files.aadhaar_image[0], destDir);
-    files.aadhaar_image[0].filename = savedFilename;
-    files.aadhaar_image[0].path = path.join(destDir, savedFilename);
+    files.aadhaar_image[0].filename = await compressAndStore(files.aadhaar_image[0], "aadhaar");
   } catch {
     return next(new Error("Failed to process Aadhaar image"));
   }
   next();
 }
 
-/** Middleware: compress recruiter logo */
+/** Middleware: compress + store the recruiter logo */
 async function compressLogoImage(req: Request, _res: Response, next: NextFunction) {
   const files = req.files as { companyLogo?: Express.Multer.File[] } | undefined;
   if (!files?.companyLogo?.length) return next();
 
-  const destDir = path.join(process.env.UPLOAD_DIR || "uploads", "recruiter");
-
   try {
-    const savedFilename = await compressAndSave(files.companyLogo[0], destDir);
-    files.companyLogo[0].filename = savedFilename;
-    files.companyLogo[0].path = path.join(destDir, savedFilename);
+    files.companyLogo[0].filename = await compressAndStore(files.companyLogo[0], "recruiter");
   } catch {
     return next(new Error("Failed to process company logo"));
   }

@@ -3,8 +3,6 @@ import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
-import fs from "fs";
-import path from "path";
 import {
   handleControllerError,
   handleNotFoundError,
@@ -14,17 +12,15 @@ import {
 } from "../utils/errorHandler";
 import { logger } from "../../utils/logger";
 import { isValidAadhaarNumber, normalizeAadhaar, maskAadhaar } from "../utils/aadhaar";
+import { getImage, deleteImage } from "../lib/storage";
 
 dotenv.config();
 
 const prisma = new PrismaClient();
 
-// Aadhaar card images are sensitive KYC docs — stored in a private dir that is
-// NOT registered with express.static, and only served via the authenticated,
-// ownership-checked routes below.
-const AADHAAR_DIR =
-  process.env.AADHAAR_UPLOAD_DIR ||
-  path.join(process.env.UPLOAD_DIR || "uploads", "aadhaar");
+// Aadhaar card images are sensitive KYC docs — stored under the private "aadhaar"
+// category (S3 or local), never publicly served, and only reachable via the
+// authenticated, ownership-checked routes below.
 
 /**
  * Fetch and shape recruiter-only profile data.
@@ -782,11 +778,11 @@ export const updateAadhaar = asyncHandler(async (req: Request, res: Response) =>
 
   const rawNumber = (req.body.aadhaar_number ?? "").toString().trim();
   if (!rawNumber) {
-    if (uploaded) fs.promises.unlink(uploaded.path).catch(() => {});
+    if (uploaded) deleteImage("aadhaar", uploaded.filename);
     throw handleValidationError("Aadhaar number is required");
   }
   if (!isValidAadhaarNumber(rawNumber)) {
-    if (uploaded) fs.promises.unlink(uploaded.path).catch(() => {});
+    if (uploaded) deleteImage("aadhaar", uploaded.filename);
     throw handleValidationError("Invalid Aadhaar number");
   }
   const normalized = normalizeAadhaar(rawNumber);
@@ -802,7 +798,7 @@ export const updateAadhaar = asyncHandler(async (req: Request, res: Response) =>
     select: { id: true },
   });
   if (existing) {
-    if (uploaded) fs.promises.unlink(uploaded.path).catch(() => {});
+    if (uploaded) deleteImage("aadhaar", uploaded.filename);
     throw handleValidationError("This Aadhaar is already registered to another account");
   }
 
@@ -817,7 +813,7 @@ export const updateAadhaar = asyncHandler(async (req: Request, res: Response) =>
       },
     });
   } catch (err: any) {
-    if (uploaded) fs.promises.unlink(uploaded.path).catch(() => {});
+    if (uploaded) deleteImage("aadhaar", uploaded.filename);
     if (err?.code === "P2002") {
       throw handleValidationError("This Aadhaar is already registered to another account");
     }
@@ -826,7 +822,7 @@ export const updateAadhaar = asyncHandler(async (req: Request, res: Response) =>
 
   // Clean up the replaced image, if any.
   if (uploaded && oldImage && oldImage !== uploaded.filename) {
-    fs.promises.unlink(path.join(AADHAAR_DIR, oldImage)).catch(() => {});
+    deleteImage("aadhaar", oldImage);
   }
 
   // Never log the Aadhaar number.
@@ -843,8 +839,8 @@ export const updateAadhaar = asyncHandler(async (req: Request, res: Response) =>
 });
 
 /**
- * Stream a user's Aadhaar image from the private dir. Shared by the self and
- * admin routes; the route layer is responsible for authorizing the caller.
+ * Stream a user's Aadhaar image from private storage (S3 or local). Shared by
+ * the self and admin routes; the route layer authorizes the caller.
  */
 async function streamAadhaarImage(res: Response, userId: string) {
   const target = await prisma.user.findUnique({
@@ -856,14 +852,18 @@ async function streamAadhaarImage(res: Response, userId: string) {
     throw handleNotFoundError("Aadhaar image");
   }
 
-  const filePath = path.resolve(path.join(AADHAAR_DIR, target.aadhaar_image));
-  if (!fs.existsSync(filePath)) {
+  const img = await getImage("aadhaar", target.aadhaar_image);
+  if (!img) {
     throw handleNotFoundError("Aadhaar image");
   }
 
-  res.setHeader("Content-Type", "image/jpeg");
+  res.setHeader("Content-Type", img.contentType);
   res.setHeader("Cache-Control", "private, no-store");
-  res.sendFile(filePath);
+  img.stream.on("error", () => {
+    if (!res.headersSent) res.status(500).end();
+    else res.end();
+  });
+  img.stream.pipe(res);
 }
 
 /** GET /users/aadhaar/image — the caller's own Aadhaar image. */
