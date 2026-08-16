@@ -10,6 +10,9 @@ import {
   updateFcmToken,
   deleteUserImage,
   getProfileCompletion,
+  updateAadhaar,
+  getMyAadhaarImage,
+  getAadhaarImageByAdmin,
 } from "../controller/userController";
 import multer from "multer";
 import sharp from "sharp";
@@ -67,6 +70,28 @@ async function compressProfileImages(req: Request, _res: Response, next: NextFun
   next();
 }
 
+/**
+ * Middleware: compress the Aadhaar image into a PRIVATE dir (not served by
+ * express.static). Only reachable via the authenticated aadhaar routes.
+ */
+async function compressAadhaarImage(req: Request, _res: Response, next: NextFunction) {
+  const files = req.files as { aadhaar_image?: Express.Multer.File[] } | undefined;
+  if (!files?.aadhaar_image?.length) return next();
+
+  const destDir =
+    process.env.AADHAAR_UPLOAD_DIR ||
+    path.join(process.env.UPLOAD_DIR || "uploads", "aadhaar");
+
+  try {
+    const savedFilename = await compressAndSave(files.aadhaar_image[0], destDir);
+    files.aadhaar_image[0].filename = savedFilename;
+    files.aadhaar_image[0].path = path.join(destDir, savedFilename);
+  } catch {
+    return next(new Error("Failed to process Aadhaar image"));
+  }
+  next();
+}
+
 /** Middleware: compress recruiter logo */
 async function compressLogoImage(req: Request, _res: Response, next: NextFunction) {
   const files = req.files as { companyLogo?: Express.Multer.File[] } | undefined;
@@ -98,6 +123,18 @@ router
 
 // Profile completion percentage
 router.get("/profile/completion", getProfileCompletion);
+
+// Aadhaar (KYC) — any authenticated role.
+// PUT submits/updates the number + image; the image is stored in a private dir
+// and is only retrievable through the authenticated GET routes below.
+router.put(
+  "/aadhaar",
+  memoryUpload.fields([{ name: "aadhaar_image", maxCount: 1 }]),
+  compressAadhaarImage,
+  updateAadhaar
+);
+router.get("/aadhaar/image", getMyAadhaarImage);
+router.get("/aadhaar/image/:userId", authorize(["ADMIN"]), getAadhaarImageByAdmin);
 
 // Recruiter profile routes
 router

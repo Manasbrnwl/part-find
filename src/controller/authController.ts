@@ -15,6 +15,7 @@ import {
   generateOTP,
   isOTPExpired,
 } from "../../utils/otp/functions.otp";
+import { maskAadhaar } from "../utils/aadhaar";
 import {
   handleControllerError,
   handleNotFoundError,
@@ -259,10 +260,12 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
   // Return success response without sensitive data
   const {
     otp: __,
-    otp_exp: ___, 
+    otp_exp: ___,
     jwt_token,
     createdAt,
     updatedAt,
+    aadhaar_number,
+    aadhaar_image,
     ...userWithoutSensitiveData
   } = updatedUser;
 
@@ -270,7 +273,11 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
     success: true,
     message: isNewUser ? "Signup successful" : "Login successful",
     data: {
-      user: userWithoutSensitiveData,
+      user: {
+        ...userWithoutSensitiveData,
+        aadhaar_number: maskAadhaar(aadhaar_number),
+        aadhaar_on_file: !!aadhaar_image,
+      },
       accessToken,
       refreshToken,
       isNewUser,

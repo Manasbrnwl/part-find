@@ -33,6 +33,13 @@ model User {
   skills        String[]  @default([])
   intro_video_link String?
 
+  // KYC — Aadhaar. Nullable because existing accounts predate this; "mandatory"
+  // is enforced in the app layer (profile-completion). Number is stored plain
+  // but is always masked in API responses and never logged; the image is stored
+  // in a private dir and only served via an authenticated, ownership-checked route.
+  aadhaar_number String? @unique
+  aadhaar_image  String? // filename in the private uploads/aadhaar dir
+
   // Recruiter-specific fields
   recruiter_company_name         String?
   recruiter_type                 String? // Individual, Company, Agency, Event Organizer

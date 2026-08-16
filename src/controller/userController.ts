@@ -3,6 +3,8 @@ import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
 import {
   handleControllerError,
   handleNotFoundError,
@@ -11,10 +13,18 @@ import {
   asyncHandler,
 } from "../utils/errorHandler";
 import { logger } from "../../utils/logger";
+import { isValidAadhaarNumber, normalizeAadhaar, maskAadhaar } from "../utils/aadhaar";
 
 dotenv.config();
 
 const prisma = new PrismaClient();
+
+// Aadhaar card images are sensitive KYC docs — stored in a private dir that is
+// NOT registered with express.static, and only served via the authenticated,
+// ownership-checked routes below.
+const AADHAAR_DIR =
+  process.env.AADHAAR_UPLOAD_DIR ||
+  path.join(process.env.UPLOAD_DIR || "uploads", "aadhaar");
 
 /**
  * Fetch and shape recruiter-only profile data.
@@ -59,6 +69,8 @@ const fetchRecruiterProfileData = async (userId: string) => {
     companyRegistration: user.recruiter_company_registration,
     companyAddress: user.recruiter_company_address,
     companyLogo: user.recruiter_company_logo,
+    aadhaarNumber: maskAadhaar(user.aadhaar_number),
+    aadhaarOnFile: !!user.aadhaar_image,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     industries: user.recruiterIndustries,
@@ -138,6 +150,8 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
     recruiter_company_registration,
     recruiter_company_address,
     recruiter_company_logo,
+    aadhaar_number,
+    aadhaar_image,
     ...userWithoutPassword
   } = user;
 
@@ -145,7 +159,11 @@ export const getProfile = asyncHandler(async (req: Request, res: Response) => {
     success: true,
     message: "Profile fetched successfully",
     data: {
-      user: userWithoutPassword,
+      user: {
+        ...userWithoutPassword,
+        aadhaar_number: maskAadhaar(aadhaar_number),
+        aadhaar_on_file: !!aadhaar_image,
+      },
       baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/profile/` : `${req.protocol}://${req.hostname}/api/v1/images/profile/`,
     },
   });
@@ -315,6 +333,8 @@ export const updateProfile = asyncHandler(
       jwt_token,
       otp,
       otp_exp,
+      aadhaar_number,
+      aadhaar_image,
       ...userWithoutPassword
     } = updatedUser;
 
@@ -322,7 +342,11 @@ export const updateProfile = asyncHandler(
       success: true,
       message: "Profile updated successfully",
       data: {
-        user: userWithoutPassword,
+        user: {
+          ...userWithoutPassword,
+          aadhaar_number: maskAadhaar(aadhaar_number),
+          aadhaar_on_file: !!aadhaar_image,
+        },
       },
     });
   }
@@ -573,6 +597,8 @@ export const updateRecruiterProfile = asyncHandler(
           companyRegistration: finalUser?.recruiter_company_registration,
           companyAddress: finalUser?.recruiter_company_address,
           companyLogo: finalUser?.recruiter_company_logo,
+          aadhaarNumber: maskAadhaar(finalUser?.aadhaar_number),
+          aadhaarOnFile: !!finalUser?.aadhaar_image,
           createdAt: finalUser?.createdAt,
           updatedAt: finalUser?.updatedAt,
           industries: finalUser?.recruiterIndustries,
@@ -694,6 +720,7 @@ export const getProfileCompletion = asyncHandler(async (req: Request, res: Respo
       recruiter_company_logo: !!user.recruiter_company_logo?.trim(),
       industries: user.recruiterIndustries.length > 0,
       gig_types: user.recruiterGigTypes.length > 0,
+      aadhaar: !!user.aadhaar_number && !!user.aadhaar_image,
     };
   } else {
     const education = Array.isArray(user.education) ? user.education : [];
@@ -713,6 +740,7 @@ export const getProfileCompletion = asyncHandler(async (req: Request, res: Respo
       intro_video_link: !!user.intro_video_link?.trim(),
       profile_image: user.userImages.length > 0,
       categories: user.UserCategory.length > 0,
+      aadhaar: !!user.aadhaar_number && !!user.aadhaar_image,
     };
   }
 
@@ -730,4 +758,128 @@ export const getProfileCompletion = asyncHandler(async (req: Request, res: Respo
       fields,
     },
   });
+});
+
+/**
+ * PUT /users/aadhaar  (multipart: aadhaar_number, aadhaar_image)
+ * Submit / update the caller's Aadhaar (KYC). Works for any role.
+ * The number is validated (12 digits + Verhoeff), stored normalized, and only
+ * ever returned masked. The image is written to the private AADHAAR_DIR.
+ */
+export const updateAadhaar = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId;
+  if (!userId) {
+    throw handleAuthorizationError("User ID is required");
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw handleNotFoundError("User");
+  }
+
+  const files = req.files as { aadhaar_image?: Express.Multer.File[] } | undefined;
+  const uploaded = files?.aadhaar_image?.[0];
+
+  const rawNumber = (req.body.aadhaar_number ?? "").toString().trim();
+  if (!rawNumber) {
+    if (uploaded) fs.promises.unlink(uploaded.path).catch(() => {});
+    throw handleValidationError("Aadhaar number is required");
+  }
+  if (!isValidAadhaarNumber(rawNumber)) {
+    if (uploaded) fs.promises.unlink(uploaded.path).catch(() => {});
+    throw handleValidationError("Invalid Aadhaar number");
+  }
+  const normalized = normalizeAadhaar(rawNumber);
+
+  // The image is mandatory, but only require a fresh upload if none is on file.
+  if (!uploaded && !user.aadhaar_image) {
+    throw handleValidationError("Aadhaar image is required");
+  }
+
+  // Friendlier duplicate check than a raw unique-constraint error.
+  const existing = await prisma.user.findFirst({
+    where: { aadhaar_number: normalized, NOT: { id: userId } },
+    select: { id: true },
+  });
+  if (existing) {
+    if (uploaded) fs.promises.unlink(uploaded.path).catch(() => {});
+    throw handleValidationError("This Aadhaar is already registered to another account");
+  }
+
+  const oldImage = user.aadhaar_image;
+
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        aadhaar_number: normalized,
+        ...(uploaded && { aadhaar_image: uploaded.filename }),
+      },
+    });
+  } catch (err: any) {
+    if (uploaded) fs.promises.unlink(uploaded.path).catch(() => {});
+    if (err?.code === "P2002") {
+      throw handleValidationError("This Aadhaar is already registered to another account");
+    }
+    throw err;
+  }
+
+  // Clean up the replaced image, if any.
+  if (uploaded && oldImage && oldImage !== uploaded.filename) {
+    fs.promises.unlink(path.join(AADHAAR_DIR, oldImage)).catch(() => {});
+  }
+
+  // Never log the Aadhaar number.
+  logger.info(`Aadhaar submitted for user ${userId}`);
+
+  res.status(200).json({
+    success: true,
+    message: "Aadhaar details saved successfully",
+    data: {
+      aadhaar_number: maskAadhaar(normalized),
+      aadhaar_on_file: true,
+    },
+  });
+});
+
+/**
+ * Stream a user's Aadhaar image from the private dir. Shared by the self and
+ * admin routes; the route layer is responsible for authorizing the caller.
+ */
+async function streamAadhaarImage(res: Response, userId: string) {
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { aadhaar_image: true },
+  });
+
+  if (!target || !target.aadhaar_image) {
+    throw handleNotFoundError("Aadhaar image");
+  }
+
+  const filePath = path.resolve(path.join(AADHAAR_DIR, target.aadhaar_image));
+  if (!fs.existsSync(filePath)) {
+    throw handleNotFoundError("Aadhaar image");
+  }
+
+  res.setHeader("Content-Type", "image/jpeg");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.sendFile(filePath);
+}
+
+/** GET /users/aadhaar/image — the caller's own Aadhaar image. */
+export const getMyAadhaarImage = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId;
+  if (!userId) {
+    throw handleAuthorizationError("User ID is required");
+  }
+  await streamAadhaarImage(res, userId);
+});
+
+/** GET /users/aadhaar/image/:userId — admin-only access to any user's image. */
+export const getAadhaarImageByAdmin = asyncHandler(async (req: Request, res: Response) => {
+  const targetId = String(req.params.userId || "");
+  if (!targetId) {
+    throw handleValidationError("User ID is required");
+  }
+  await streamAadhaarImage(res, targetId);
 });
