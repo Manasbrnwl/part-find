@@ -26,6 +26,12 @@ import {
   updateTestimonial,
   deleteTestimonial,
 } from "../controller/websiteController";
+import {
+  getReferrals,
+  createReferral,
+  updateReferral,
+  deleteReferral,
+} from "../controller/referralController";
 
 const router = Router();
 
@@ -60,6 +66,12 @@ router.delete("/clients/:id", deleteClient);
 router.post("/testimonials", createTestimonial);
 router.patch("/testimonials/:id", updateTestimonial);
 router.delete("/testimonials/:id", deleteTestimonial);
+
+// Referral codes administration
+router.get("/referrals", getReferrals);
+router.post("/referrals", createReferral);
+router.patch("/referrals/:id", updateReferral);
+router.delete("/referrals/:id", deleteReferral);
 
 export default router;
 

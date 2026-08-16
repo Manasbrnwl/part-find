@@ -40,6 +40,9 @@ model User {
   aadhaar_number String? @unique
   aadhaar_image  String? // filename in the private uploads/aadhaar dir
 
+  // Referral code this account signed up with (set once, at first-time signup).
+  referred_by_code String?
+
   // Recruiter-specific fields
   recruiter_company_name         String?
   recruiter_type                 String? // Individual, Company, Agency, Event Organizer
@@ -344,5 +347,19 @@ model Testimonial {
   text      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Referral codes. Each code belongs to an owner (identified by name + email) and
+// tracks how many accounts signed up using it. A code can be applied once per
+// new account, at first-time signup only.
+model ReferralCode {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String // owner's name
+  email       String // owner's email
+  usage_count Int      @default(0)
+  is_active   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 

@@ -16,6 +16,7 @@ import {
   isOTPExpired,
 } from "../../utils/otp/functions.otp";
 import { maskAadhaar } from "../utils/aadhaar";
+import { applyReferralCodeToUser } from "./referralController";
 import {
   handleControllerError,
   handleNotFoundError,
@@ -189,7 +190,7 @@ setInterval(() => {
  * @param res Response object
  */
 export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
-  const { userId, otp, name, password, fcmToken } = req.body;
+  const { userId, otp, name, password, fcmToken, referral_code } = req.body;
 
   if (!userId || !otp) {
     throw handleValidationError("User ID and OTP are required");
@@ -257,6 +258,21 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
   // Determine if this is a new user (missing required profile details)
   const isNewUser = user.role == "RECRUITER" ? checkIsNewRecruiter(updatedUser) : checkIsNewUser(updatedUser);
 
+  // Referral code: applied ONCE, only at first-time signup, only if the account
+  // hasn't already used one. Invalid/self-referral codes are ignored (never
+  // block signup). Fraud-resistant because it only runs after OTP is verified.
+  let appliedReferralCode: string | null = null;
+  if (referral_code && !updatedUser.referred_by_code && isNewUser) {
+    appliedReferralCode = await applyReferralCodeToUser(
+      updatedUser.id,
+      updatedUser.email,
+      referral_code
+    ).catch((err) => {
+      logger.error("Failed to apply referral code", { error: err });
+      return null;
+    });
+  }
+
   // Return success response without sensitive data
   const {
     otp: __,
@@ -275,12 +291,14 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
     data: {
       user: {
         ...userWithoutSensitiveData,
+        referred_by_code: appliedReferralCode || updatedUser.referred_by_code,
         aadhaar_number: maskAadhaar(aadhaar_number),
         aadhaar_on_file: !!aadhaar_image,
       },
       accessToken,
       refreshToken,
       isNewUser,
+      referralApplied: !!appliedReferralCode,
       baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/profile/` : `${req.protocol}://${req.hostname}/api/v1/images/profile/`,
     },
   };
