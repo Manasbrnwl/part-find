@@ -139,6 +139,9 @@ model Post {
   startDate      DateTime       @default(now())
   is_active      Boolean        @default(true)
   is_urgent      Boolean        @default(false)
+  // Recruitment toggle: recruiter can close applications early (before endDate).
+  // Closed posts are hidden from the discovery feeds and reject new applications.
+  is_recruiting  Boolean        @default(true)
   company_name   String?
   latitude       Float?
   longitude      Float?

@@ -288,6 +288,49 @@ export const deletePost = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+/**
+ * PUT /post/recruitment/:id  (Recruiter owner / Admin)
+ * Open or close applications for a post early, before its endDate.
+ * Body: { is_recruiting: boolean }. Closing hides the post from the discovery
+ * feeds and rejects new applications; re-opening restores it.
+ */
+export const updatePostRecruitment = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const { is_recruiting } = req.body;
+
+  if (!id) {
+    throw handleValidationError("Post ID is required");
+  }
+  if (typeof is_recruiting !== "boolean") {
+    throw handleValidationError("is_recruiting (boolean) is required");
+  }
+
+  const post = await prisma.post.findUnique({ where: { id } });
+  if (!post) {
+    throw handleNotFoundError("Post");
+  }
+
+  // Only the post owner (recruiter) or an admin may toggle recruitment.
+  const requester = await prisma.user.findUnique({
+    where: { id: req.userId },
+    select: { role: true },
+  });
+  if (post.userId !== req.userId && requester?.role !== "ADMIN") {
+    throw handleForbiddenError("You don't have permission to update this post");
+  }
+
+  const updated = await prisma.post.update({
+    where: { id },
+    data: { is_recruiting },
+  });
+
+  res.status(200).json({
+    success: true,
+    message: is_recruiting ? "Recruitment opened" : "Recruitment closed",
+    data: updated,
+  });
+});
+
 export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
   const location = req.query.location as string;
   const { limit = 10, page = 1 } = req.query;
@@ -302,6 +345,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
       where: {
         startDate: { gt: new Date() },
         is_active: true,
+        is_recruiting: true,
         approval_status: PostApprovalStatus.APPROVED,
       },
       select: {
@@ -324,6 +368,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
         boys: true,
         lunch: true,
         is_active: true,
+        is_recruiting: true,
         is_urgent: true,
         startDate: true,
         endDate: true,
@@ -359,6 +404,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
       where: {
         startDate: { gt: new Date() },
         is_active: true,
+        is_recruiting: true,
         approval_status: PostApprovalStatus.APPROVED,
       },
     }),
@@ -438,6 +484,10 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
 
   if (post.endDate <= new Date()) {
     throw handleValidationError("Cannot apply to expired post");
+  }
+
+  if (!post.is_recruiting) {
+    throw handleValidationError("Recruitment for this post is closed");
   }
 
   if (post.userId === userId) {
@@ -1017,6 +1067,7 @@ export const getSavePosts = asyncHandler(
             boys: true,
             lunch: true,
             is_active: true,
+            is_recruiting: true,
             is_urgent: true,
             startDate: true,
             endDate: true,
@@ -1083,6 +1134,7 @@ export const getNearbyPosts = asyncHandler(
       where: {
         endDate: { gt: new Date() },
         is_active: true,
+        is_recruiting: true,
         approval_status: PostApprovalStatus.APPROVED,
         latitude: { not: null },
         longitude: { not: null },
@@ -1107,6 +1159,7 @@ export const getNearbyPosts = asyncHandler(
         boys: true,
         lunch: true,
         is_active: true,
+        is_recruiting: true,
         is_urgent: true,
         startDate: true,
         endDate: true,
