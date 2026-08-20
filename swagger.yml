@@ -438,7 +438,10 @@ paths:
     post:
       tags: [Auth]
       summary: Logout user
-      description: Revokes the provided refresh token and clears the user's FCM token.
+      description: >-
+        Revokes the provided refresh token. The FCM token is intentionally
+        retained so the user keeps receiving push notifications (e.g. application
+        approved) after logging out; it is overwritten on the next login.
       requestBody:
         content:
           application/json:
@@ -931,7 +934,10 @@ paths:
   /post/list/{id}:
     post:
       tags: [Posts]
-      summary: Get applicants for a post (Recruiter only)
+      summary: Get applicants for a post (Recruiter/Admin)
+      description: >-
+        Returns the post's applicants grouped by status. Includes a separate
+        `withdrawn` list, each entry carrying the withdrawal `remark` (reason).
       parameters:
         - name: id
           in: path
@@ -940,12 +946,18 @@ paths:
             type: string
       responses:
         '200':
-          description: List of applicants
+          description: >-
+            Applicants for the post, including approved, rejected and withdrawn
+            lists (withdrawn entries include the withdrawal reason/remark).
 
   /post/update-status/{id}:
     put:
       tags: [Posts]
       summary: Update applicant status (Recruiter only)
+      description: >-
+        Updates an application's status. Setting the status to APPROVED or
+        REJECTED sends a push notification to the applicant. Setting NOT_PRESENT
+        flags the user and sends an absence warning.
       parameters:
         - name: id
           in: path
@@ -965,6 +977,85 @@ paths:
       responses:
         '200':
           description: Status updated
+
+  /post/recruitment/{id}:
+    put:
+      tags: [Posts]
+      summary: Open or close recruitment for a post (Recruiter owner / Admin)
+      description: >-
+        Toggles whether a post is actively accepting applications, independent of
+        the post's end date. When recruitment is closed, users can no longer apply
+        even if the post has not yet ended.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Post ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_recruiting]
+              properties:
+                is_recruiting:
+                  type: boolean
+                  description: true to open recruitment, false to close it
+      responses:
+        '200':
+          description: Recruitment status updated
+        '403':
+          description: Not the post owner / not permitted
+        '404':
+          description: Post not found
+
+  /post/attendance/{postId}:
+    put:
+      tags: [Posts]
+      summary: Bulk mark applicants as attended (Recruiter owner / Admin)
+      description: >-
+        Marks the given applicants as having attended the event. Only users who
+        actually applied to the post are marked (others are returned in
+        `skippedNotApplied`). Each attendee is issued a participation certificate
+        (idempotent — no duplicates); a rating attached later by the recruiter is
+        added to that same certificate. Passing `attended: false` un-marks them
+        and removes the unrated (attendance-only) certificate.
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Post ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userIds]
+              properties:
+                userIds:
+                  type: array
+                  items:
+                    type: string
+                  description: IDs of applicants to mark
+                attended:
+                  type: boolean
+                  default: true
+                  description: true to mark attended (default), false to un-mark
+      responses:
+        '200':
+          description: >-
+            Attendance updated. Response data includes `marked`, `count`,
+            `attended`, `certificatesIssued`, and `skippedNotApplied`.
+        '403':
+          description: Not the post owner / not permitted
+        '404':
+          description: Post not found
 
   /post/save/{postId}:
     post:
