@@ -173,6 +173,8 @@ model postApplied {
   updatedAt DateTime @updatedAt
   status    Status?  @default(PENDING)
   remark    String?
+  attended     Boolean   @default(false) // recruiter marked this applicant as present at the event
+  attended_at  DateTime?
   post      Post     @relation(fields: [postId], references: [id])
   user      User     @relation(fields: [userId], references: [id])
 
@@ -300,7 +302,7 @@ model Certificate {
   userId      String
   postId      String
   recruiterId String
-  rating      Int
+  rating      Int?     // null = participation/attendance certificate (not yet rated)
   issuedAt    DateTime @default(now())
 
   user      User @relation("UserCertificates", fields: [userId], references: [id], onDelete: Cascade)

@@ -8,7 +8,7 @@ import sharp from "sharp";
 export function generateCertificateSvg(
     userName: string,
     postTitle: string,
-    rating: number,
+    rating: number | null,
     recruiterName: string,
     issuedAt: Date
 ): string {
@@ -17,7 +17,7 @@ export function generateCertificateSvg(
         month: "long",
         day: "numeric",
     });
-    const stars = "★".repeat(rating) + "☆".repeat(5 - rating);
+    const stars = rating ? "★".repeat(rating) + "☆".repeat(5 - rating) : "";
 
     // Escape XML-unsafe characters
     const esc = (s: string) =>
@@ -107,7 +107,7 @@ export function generateCertificateSvg(
 export async function renderCertificateImage(
     userName: string,
     postTitle: string,
-    rating: number,
+    rating: number | null,
     recruiterName: string,
     issuedAt: Date
 ): Promise<Buffer> {

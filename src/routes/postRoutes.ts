@@ -15,7 +15,8 @@ import {
   getSavePosts,
   getNearbyPosts,
   cancelApplication,
-  updatePostRecruitment
+  updatePostRecruitment,
+  markAttendance
 } from "../controller/postController";
 import { authenticate, authorize } from "../middleware/authMiddleware";
 
@@ -26,6 +27,7 @@ router.use(authenticate);
 router.post("/", authorize(["ADMIN", "RECRUITER"]), createPosts);
 router.put("/update/:id", authorize(["ADMIN", "RECRUITER"]), updatePost);
 router.put("/recruitment/:id", authorize(["ADMIN", "RECRUITER"]), updatePostRecruitment);
+router.put("/attendance/:postId", authorize(["ADMIN", "RECRUITER"]), markAttendance);
 router.delete("/delete/:id", authorize(["ADMIN", "RECRUITER"]), deletePost);
 router.get("/applied/get-all", authorize(["USER"]), getAppliedPosts);
 router.post("/apply/:id", authorize(["USER"]), applyToPost);

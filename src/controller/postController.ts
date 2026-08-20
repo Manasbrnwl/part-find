@@ -331,6 +331,88 @@ export const updatePostRecruitment = asyncHandler(async (req: Request, res: Resp
   });
 });
 
+/**
+ * PUT /post/attendance/:postId  (Recruiter owner / Admin)
+ * Bulk-mark applicants as having attended the event. Attendees are issued a
+ * participation certificate (a rating gets attached later if the recruiter
+ * rates them). Body: { userIds: string[], attended?: boolean } (default true).
+ */
+export const markAttendance = asyncHandler(async (req: Request, res: Response) => {
+  const postId = req.params.postId as string;
+  const { userIds, attended } = req.body;
+
+  if (!postId) {
+    throw handleValidationError("Post ID is required");
+  }
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    throw handleValidationError("userIds (a non-empty array) is required");
+  }
+  const isAttended = attended !== false; // defaults to true
+
+  const post = await prisma.post.findUnique({ where: { id: postId } });
+  if (!post) {
+    throw handleNotFoundError("Post");
+  }
+
+  const requester = await prisma.user.findUnique({
+    where: { id: req.userId },
+    select: { role: true },
+  });
+  if (post.userId !== req.userId && requester?.role !== "ADMIN") {
+    throw handleForbiddenError("You don't have permission to manage this post");
+  }
+
+  // Only mark users who actually applied to this post.
+  const applications = await prisma.postApplied.findMany({
+    where: { postId, userId: { in: userIds } },
+    select: { userId: true },
+  });
+  const validUserIds = applications.map((a) => a.userId);
+  if (validUserIds.length === 0) {
+    throw handleValidationError("None of the provided users applied to this post");
+  }
+
+  await prisma.postApplied.updateMany({
+    where: { postId, userId: { in: validUserIds } },
+    data: { attended: isAttended, attended_at: isAttended ? new Date() : null },
+  });
+
+  let certificatesIssued = 0;
+  if (isAttended) {
+    // Attendees get a participation certificate (idempotent via unique post+user).
+    const result = await prisma.certificate.createMany({
+      data: validUserIds.map((uid) => ({
+        userId: uid,
+        postId,
+        recruiterId: post.userId,
+        rating: null,
+      })),
+      skipDuplicates: true,
+    });
+    certificatesIssued = result.count;
+  } else {
+    // Un-marking attendance removes attendance-only (unrated) certificates.
+    await prisma.certificate.deleteMany({
+      where: { postId, userId: { in: validUserIds }, rating: null },
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    message: isAttended
+      ? `Marked ${validUserIds.length} attendee(s); ${certificatesIssued} certificate(s) issued`
+      : `Removed attendance for ${validUserIds.length} applicant(s)`,
+    data: {
+      postId,
+      marked: validUserIds,
+      count: validUserIds.length,
+      attended: isAttended,
+      certificatesIssued,
+      skippedNotApplied: userIds.filter((u: string) => !validUserIds.includes(u)),
+    },
+  });
+});
+
 export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
   const location = req.query.location as string;
   const { limit = 10, page = 1 } = req.query;

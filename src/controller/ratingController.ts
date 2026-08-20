@@ -116,39 +116,46 @@ export const createRating = asyncHandler(async (req: Request, res: Response) => 
         });
     }
 
-    // Issue certificate if rating >= 3 (idempotency: one cert per post+user pair)
-    if (Number(rating) >= 3) {
-        const existing = await prisma.certificate.findUnique({
-            where: { postId_userId: { postId, userId: userId as string } },
+    // Certificate handling (one cert per post+user pair). If a certificate
+    // already exists (e.g. issued when the user was marked as attended), attach
+    // or refresh its rating. Otherwise issue a fresh one for ratings >= 3.
+    const existing = await prisma.certificate.findUnique({
+        where: { postId_userId: { postId, userId: userId as string } },
+    });
+
+    if (existing) {
+        if (existing.rating !== Number(rating)) {
+            await prisma.certificate.update({
+                where: { id: existing.id },
+                data: { rating: Number(rating), recruiterId },
+            });
+        }
+    } else if (Number(rating) >= 3) {
+        const cert = await prisma.certificate.create({
+            data: {
+                userId: userId as string,
+                postId,
+                recruiterId,
+                rating: Number(rating),
+            },
         });
 
-        if (!existing) {
-            const cert = await prisma.certificate.create({
-                data: {
-                    userId: userId as string,
-                    postId,
-                    recruiterId,
-                    rating: Number(rating),
-                },
-            });
+        const fullUser = await prisma.user.findUnique({
+            where: { id: userId as string },
+            select: { email: true, name: true, fcm_token: true },
+        });
 
-            const fullUser = await prisma.user.findUnique({
-                where: { id: userId as string },
-                select: { email: true, name: true, fcm_token: true },
+        if (fullUser?.email) {
+            await queueCompletionCertificate({
+                userId: userId as string,
+                userName: fullUser.name || "User",
+                userEmail: fullUser.email,
+                postTitle: post.title,
+                rating: Number(rating),
+                recruiterName: recruiter?.name || "Recruiter",
+                issuedAt: cert.issuedAt.toISOString(),
+                fcmToken: fullUser.fcm_token || undefined,
             });
-
-            if (fullUser?.email) {
-                await queueCompletionCertificate({
-                    userId: userId as string,
-                    userName: fullUser.name || "User",
-                    userEmail: fullUser.email,
-                    postTitle: post.title,
-                    rating: Number(rating),
-                    recruiterName: recruiter?.name || "Recruiter",
-                    issuedAt: cert.issuedAt.toISOString(),
-                    fcmToken: fullUser.fcm_token || undefined,
-                });
-            }
         }
     }
 
