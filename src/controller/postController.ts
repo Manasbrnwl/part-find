@@ -624,6 +624,7 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
         id: true,
         status: true,
         content: true,
+        remark: true,
         user: {
           select: {
             id: true,
@@ -731,11 +732,46 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
     },
   }));
 
+  // Withdrawn applicants (status CANCELLED) with the reason they withdrew.
+  // Always returned alongside the main list, regardless of the status filter.
+  const withdrawnRaw = await prisma.postApplied.findMany({
+    where: { postId: id, status: Status.CANCELLED },
+    select: {
+      id: true,
+      status: true,
+      remark: true,
+      content: true,
+      updatedAt: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone_number: true,
+          gender: true,
+          userImages: {
+            where: { is_deleted: false },
+            select: { image: true },
+          },
+        },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  const withdrawn = withdrawnRaw.map((app) => ({
+    ...app,
+    withdrawReason: app.remark || "No reason provided",
+    withdrawnAt: app.updatedAt,
+  }));
+
   res.status(200).json({
     success: true,
     message: "Post applications retrieved successfully",
     data: {
       list: listWithRatings,
+      withdrawn,
+      withdrawnCount: withdrawn.length,
       totalPages: Math.ceil(total / pageSize),
       currentPage: pageNumber,
       totalApplications: total,
