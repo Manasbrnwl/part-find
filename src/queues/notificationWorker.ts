@@ -11,6 +11,7 @@ import {
     RatingNotificationData,
     NewJobPostedData,
     NewApplicationData,
+    ApplicationStatusData,
     LowRatingWarningData,
     AbsentWarningData,
     CompletionCertificateData,
@@ -102,6 +103,31 @@ async function processNewApplication(data: NewApplicationData) {
     });
 
     logger.info(`Application notification sent to recruiter for post ${data.postId}`);
+}
+
+/**
+ * Process application status notification — sent to the applicant when a
+ * recruiter/admin approves or rejects their application.
+ */
+async function processApplicationStatus(data: ApplicationStatusData) {
+    if (!data.fcmToken) {
+        logger.warn(`No FCM token for user ${data.userId}, skipping status notification`);
+        return;
+    }
+
+    const approved = String(data.status).toUpperCase() === "APPROVED";
+    const by = data.recruiterName ? ` by ${data.recruiterName}` : "";
+
+    await sendFCMNotification(data.fcmToken, {
+        title: approved ? "🎉 You're selected!" : "Application update",
+        body: approved
+            ? `Great news! Your application for "${data.postTitle}" was approved${by}.`
+            : `Your application for "${data.postTitle}" was not selected this time.`,
+        reminderId: data.userId,
+        type: NotificationType.APPLICATION_STATUS,
+    });
+
+    logger.info(`Application status (${data.status}) notification sent to user ${data.userId}`);
 }
 
 /**
@@ -341,7 +367,11 @@ export function startNotificationWorker() {
                     case NotificationType.NEW_APPLICATION:
                         await processNewApplication(job.data as NewApplicationData);
                         break;
-                    
+
+                    case NotificationType.APPLICATION_STATUS:
+                        await processApplicationStatus(job.data as ApplicationStatusData);
+                        break;
+
                     case NotificationType.LOW_RATING_WARNING:
                         await processLowRatingWarning(job.data as LowRatingWarningData);
                         break;

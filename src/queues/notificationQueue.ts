@@ -7,6 +7,7 @@ export enum NotificationType {
     RATING_RECEIVED = "RATING_RECEIVED",
     NEW_JOB_POSTED = "NEW_JOB_POSTED",
     NEW_APPLICATION = "NEW_APPLICATION",
+    APPLICATION_STATUS = "APPLICATION_STATUS",
     LOW_RATING_WARNING = "LOW_RATING_WARNING",
     ABSENT_WARNING = "ABSENT_WARNING",
     COMPLETION_CERTIFICATE = "COMPLETION_CERTIFICATE",
@@ -53,6 +54,14 @@ export interface NewApplicationData {
     postTitle: string;
     applicantName: string;
     recruiterFcmToken: string;
+}
+
+export interface ApplicationStatusData {
+    userId: string;
+    postTitle: string;
+    status: string; // APPROVED | REJECTED
+    recruiterName?: string;
+    fcmToken: string;
 }
 
 export interface LowRatingWarningData {
@@ -208,6 +217,20 @@ export async function queueNewApplicationNotification(data: NewApplicationData) 
         }
     );
     logger.info("Application notification queued for recruiter");
+}
+
+/**
+ * Queue a notification to the applicant when a recruiter approves/rejects them
+ */
+export async function queueApplicationStatusNotification(data: ApplicationStatusData) {
+    await getNotificationQueue().add(
+        NotificationType.APPLICATION_STATUS,
+        data,
+        {
+            jobId: `appstatus-${data.userId}-${Date.now()}`,
+        }
+    );
+    logger.info(`Application status (${data.status}) notification queued for user ${data.userId}`);
 }
 
 /**

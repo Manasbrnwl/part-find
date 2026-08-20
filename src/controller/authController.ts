@@ -424,7 +424,10 @@ export const loginGoogleUser = asyncHandler(
 );
 
 /**
- * Logout user - revoke refresh token and clear fcm_token
+ * Logout user - revoke refresh token.
+ * NOTE: the FCM token is intentionally NOT cleared here, so the user keeps
+ * receiving push notifications (e.g. application approved) after logging out.
+ * It gets overwritten on the next login when the device re-registers.
  * @param req Request object with userId from auth middleware
  * @param res Response object
  */
@@ -440,14 +443,6 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
   if (refreshToken) {
     await revokeRefreshToken(refreshToken);
   }
-
-  // Clear FCM token
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      fcm_token: null,
-    },
-  });
 
   res.status(200).json({
     success: true,

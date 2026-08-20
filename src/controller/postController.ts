@@ -13,6 +13,7 @@ import {
   scheduleJobReminder,
   queueNewJobNotification,
   queueNewApplicationNotification,
+  queueApplicationStatusNotification,
   queueAbsentWarning,
 } from "../queues/notificationQueue";
 import { logger } from "../../utils/logger";
@@ -966,6 +967,19 @@ export const updateUserStatus = asyncHandler(
         }
       }
     });
+
+    // Notify the applicant when a decision is made on their application.
+    if (
+      (status === "APPROVED" || status === "REJECTED") &&
+      updatedApplication.user.fcm_token
+    ) {
+      await queueApplicationStatusNotification({
+        userId: updatedApplication.userId,
+        postTitle: updatedApplication.post.title,
+        status,
+        fcmToken: updatedApplication.user.fcm_token,
+      });
+    }
 
     // If status is NOT_PRESENT, flag the user and send warning
     if (status === "NOT_PRESENT") {
