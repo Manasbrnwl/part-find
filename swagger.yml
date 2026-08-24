@@ -119,6 +119,9 @@ components:
         category:
           type: string
           description: General category for the job post (e.g., Hospitality, Retail)
+        type_id:
+          type: integer
+          description: Employment type ID (from GET /post/types)
         is_active:
           type: boolean
         approval_status:
@@ -759,9 +762,32 @@ paths:
                 category:
                   type: string
                   description: General category for the job post (e.g., Hospitality, Retail)
+                type_id:
+                  type: integer
+                  description: Employment type ID (from GET /post/types). Optional.
       responses:
         '201':
           description: Post created
+
+  /post/types:
+    get:
+      tags: [Posts]
+      summary: List employment/post types
+      description: >-
+        Returns the available post types (Part-Time, Full-Time, ...). By default
+        only active types are returned; pass ?all=true (admin) to include inactive
+        ones. Used to populate the create-post type dropdown and the feed type filter.
+      parameters:
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false"]
+          description: "true = include inactive types (for admin management)"
+      responses:
+        '200':
+          description: List of post types
 
   /post/update/{id}:
     put:
@@ -811,9 +837,15 @@ paths:
           schema:
             type: integer
             default: 10
+        - name: type_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter posts by employment type (from GET /post/types)
       responses:
         '200':
-          description: List of posts
+          description: List of posts (each includes its `type` object)
 
   /post/nearby:
     get:
@@ -848,6 +880,12 @@ paths:
           schema:
             type: integer
             default: 20
+        - name: type_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter nearby posts by employment type
       responses:
         '200':
           description: List of nearby posts with distance
@@ -956,8 +994,10 @@ paths:
       summary: Update applicant status (Recruiter only)
       description: >-
         Updates an application's status. Setting the status to APPROVED or
-        REJECTED sends a push notification to the applicant. Setting NOT_PRESENT
-        flags the user and sends an absence warning.
+        REJECTED sends a push notification to the applicant. On REJECTED, the
+        optional `reason` is stored and surfaced to the applicant on their
+        applied-posts list (as `rejectReason`). Setting NOT_PRESENT flags the
+        user and sends an absence warning.
       parameters:
         - name: id
           in: path
@@ -974,6 +1014,9 @@ paths:
                 status:
                   type: string
                   enum: [PENDING, APPROVED, REJECTED, CANCELLED, NOT_PRESENT]
+                reason:
+                  type: string
+                  description: Rejection reason (stored when status is REJECTED; `remark` also accepted)
       responses:
         '200':
           description: Status updated
@@ -1495,7 +1538,7 @@ paths:
     get:
       tags: [Admin]
       summary: List all job posts (Admin only)
-      description: Returns all posts with recruiter info and applicant counts. Optional status filter for the moderation queue.
+      description: Returns all posts with recruiter info, employment `type`, and applicant counts. Optional status/type filters.
       parameters:
         - name: status
           in: query
@@ -1504,6 +1547,12 @@ paths:
             type: string
             enum: [PENDING, APPROVED, REJECTED]
           description: Filter by approval status (e.g. PENDING for the moderation queue)
+        - name: type_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter by employment type
       responses:
         '200':
           description: List of posts
@@ -1511,6 +1560,99 @@ paths:
           description: Unauthorized
         '403':
           description: Forbidden - admin only
+
+  /admin/posts/{id}/applicants:
+    get:
+      tags: [Admin]
+      summary: Per-post applicant breakdown (Admin only)
+      description: >-
+        Full applicant breakdown for a single post (any post). Returns per-status
+        counts plus grouped lists: pending, approved, rejected (with reject reason),
+        withdrawn (CANCELLED, with withdrawal reason) and not-present.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Post ID
+      responses:
+        '200':
+          description: Applicant breakdown (counts + grouped lists)
+        '404':
+          description: Post not found
+
+  /admin/post-types:
+    post:
+      tags: [Admin]
+      summary: Create a post/employment type (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Post type created
+
+  /admin/post-types/{id}:
+    patch:
+      tags: [Admin]
+      summary: Update a post type (Admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                is_active:
+                  type: boolean
+      responses:
+        '200':
+          description: Post type updated
+        '404':
+          description: Post type not found
+    delete:
+      tags: [Admin]
+      summary: Delete/deactivate a post type (Admin only)
+      description: >-
+        Soft-deletes by deactivating (keeps historical posts' type intact). Pass
+        ?hard=true to permanently delete (only when no post uses it).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: hard
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false"]
+          description: "true = permanently delete (fails if any post uses the type)"
+      responses:
+        '200':
+          description: Post type deactivated or deleted
+        '404':
+          description: Post type not found
 
   /admin/posts/{id}/approval:
     patch:
