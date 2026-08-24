@@ -57,6 +57,11 @@ const checkIsNewRecruiter = (user: any): boolean => {
   return !emailVal || !phoneVal || !recruiter_company_name || !recruiter_type || !recruiter_company_address;
 };
 
+// Business accounts (recruiters and service-seekers) share the company-based
+// onboarding/completeness check; job-seekers use the personal-profile check.
+const isBusinessRole = (role: any): boolean =>
+  role === "RECRUITER" || role === "SERVICE_SEEKER";
+
 /**
  * Request OTP for login or signup
  * @param req Request object with email or phone_number
@@ -165,7 +170,7 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
     data: {
       userId: user?.id,
       profile: user?.userImages,
-      isNewUser: user.role == "RECRUITER" ? checkIsNewRecruiter(user) : checkIsNewUser(user),
+      isNewUser: isBusinessRole(user.role) ? checkIsNewRecruiter(user) : checkIsNewUser(user),
       baseUrl: process.env.BASE_URL ? `${process.env.BASE_URL}/api/v1/images/profile/` : `${req.protocol}://${req.hostname}/api/v1/images/profile/`,
     },
   });
@@ -256,7 +261,7 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
   });
 
   // Determine if this is a new user (missing required profile details)
-  const isNewUser = user.role == "RECRUITER" ? checkIsNewRecruiter(updatedUser) : checkIsNewUser(updatedUser);
+  const isNewUser = isBusinessRole(user.role) ? checkIsNewRecruiter(updatedUser) : checkIsNewUser(updatedUser);
 
   // Referral code: applied ONCE, only at first-time signup, only if the account
   // hasn't already used one. Invalid/self-referral codes are ignored (never
@@ -407,7 +412,7 @@ export const loginGoogleUser = asyncHandler(
           email: user.email,
           phone: user.phone_number || "",
           role: user.role,
-          isNewUser: user.role == "RECRUITER" ? checkIsNewRecruiter(user) : checkIsNewUser(user),
+          isNewUser: isBusinessRole(user.role) ? checkIsNewRecruiter(user) : checkIsNewUser(user),
           accessToken,
           refreshToken,
         },

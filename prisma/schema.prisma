@@ -240,6 +240,9 @@ enum Role {
   USER
   ADMIN
   RECRUITER
+  // Client who asks PartFind to source gigs/candidates for them (managed service),
+  // as opposed to RECRUITER who self-serves by posting jobs directly.
+  SERVICE_SEEKER
 }
 
 enum Status {
