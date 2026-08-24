@@ -8,10 +8,16 @@ import {
   togglePostStatus,
   updatePostApproval,
   getAllApplications,
+  getPostApplicants,
   deleteApplication,
   updateApplicationStatus,
   sendUserNotification,
 } from "../controller/adminController";
+import {
+  createPostType,
+  updatePostType,
+  deletePostType,
+} from "../controller/postTypeController";
 import {
   createBlog,
   getAdminBlogs,
@@ -44,12 +50,18 @@ router.patch("/users/:id/role", switchUserRole);
 router.post("/users/:id/notify", sendUserNotification);
 
 router.get("/posts", getAllPosts);
+router.get("/posts/:id/applicants", getPostApplicants);
 router.patch("/posts/:id/toggle", togglePostStatus);
 router.patch("/posts/:id/approval", updatePostApproval);
 
 router.get("/applications", getAllApplications);
 router.delete("/applications/:id", deleteApplication);
 router.patch("/applications/:id/status", updateApplicationStatus);
+
+// Post/employment type administration
+router.post("/post-types", createPostType);
+router.patch("/post-types/:id", updatePostType);
+router.delete("/post-types/:id", deletePostType);
 
 // Blog administration
 router.get("/blogs", getAdminBlogs);

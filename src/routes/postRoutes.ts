@@ -18,11 +18,16 @@ import {
   updatePostRecruitment,
   markAttendance
 } from "../controller/postController";
+import { getPostTypes } from "../controller/postTypeController";
 import { authenticate, authorize } from "../middleware/authMiddleware";
 
 const router = express.Router();
 
 router.use(authenticate);
+
+// List employment types for the create-post dropdown / feed filter.
+// Declared before "/:id" so it isn't captured by the param route.
+router.get("/types", authorize(["USER", "RECRUITER", "ADMIN"]), getPostTypes);
 
 router.post("/", authorize(["ADMIN", "RECRUITER"]), createPosts);
 router.put("/update/:id", authorize(["ADMIN", "RECRUITER"]), updatePost);

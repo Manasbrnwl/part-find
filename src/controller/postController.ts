@@ -82,6 +82,7 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
     company_name,
     categories,
     category,
+    type_id,
     latitude,
     longitude,
   } = req.body;
@@ -93,6 +94,21 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
   }
   if (!title || !content) {
     throw handleValidationError("Title and content are required");
+  }
+
+  // Validate the employment type if one was supplied.
+  let typeId: number | null = null;
+  if (type_id !== undefined && type_id !== null && type_id !== "") {
+    typeId = parseInt(type_id, 10);
+    if (Number.isNaN(typeId)) {
+      throw handleValidationError("type_id must be a valid number");
+    }
+    const typeExists = await prisma.postType.findFirst({
+      where: { id: typeId, is_active: true },
+    });
+    if (!typeExists) {
+      throw handleValidationError("Selected post type does not exist or is inactive");
+    }
   }
   if (!startDate || !endDate) {
     throw handleValidationError("Start date and end date are required");
@@ -141,6 +157,7 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
       dressCode: dressCode || null,
       company_name,
       category,
+      type_id: typeId,
       girls,
       boys,
       lunch,
@@ -199,6 +216,7 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
     boys,
     lunch,
     category,
+    type_id,
     latitude,
     longitude,
   } = req.body;
@@ -226,6 +244,27 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
       );
   }
 
+  // Resolve the employment type: undefined = leave unchanged, "" / null = clear,
+  // a number = set (must be an existing, active type).
+  let typeIdUpdate: number | null | undefined = undefined;
+  if (type_id !== undefined) {
+    if (type_id === null || type_id === "") {
+      typeIdUpdate = null;
+    } else {
+      const parsed = parseInt(type_id, 10);
+      if (Number.isNaN(parsed)) {
+        throw handleValidationError("type_id must be a valid number");
+      }
+      const typeExists = await prisma.postType.findFirst({
+        where: { id: parsed, is_active: true },
+      });
+      if (!typeExists) {
+        throw handleValidationError("Selected post type does not exist or is inactive");
+      }
+      typeIdUpdate = parsed;
+    }
+  }
+
   const updatedPost = await prisma.post.update({
     where: { id },
     data: {
@@ -245,6 +284,7 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
       dressCode: dressCode !== undefined ? dressCode : post.dressCode,
       company_name,
       category: category || post.category,
+      ...(typeIdUpdate !== undefined && { type_id: typeIdUpdate }),
       girls,
       boys,
       lunch,
@@ -459,20 +499,24 @@ export const markAttendance = asyncHandler(async (req: Request, res: Response) =
 export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
   const location = req.query.location as string;
   const { limit = 10, page = 1 } = req.query;
+  const typeId = req.query.type_id ? parseInt(req.query.type_id as string, 10) : undefined;
 
   const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
   const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
   const skip = (pageNumber - 1) * pageSize;
   const take = pageSize;
 
+  const feedWhere = {
+    startDate: { gt: new Date() },
+    is_active: true,
+    is_recruiting: true,
+    approval_status: PostApprovalStatus.APPROVED,
+    ...(typeId && !Number.isNaN(typeId) ? { type_id: typeId } : {}),
+  };
+
   const [posts, total] = await Promise.all([
     prisma.post.findMany({
-      where: {
-        startDate: { gt: new Date() },
-        is_active: true,
-        is_recruiting: true,
-        approval_status: PostApprovalStatus.APPROVED,
-      },
+      where: feedWhere,
       select: {
         id: true,
         userId: true,
@@ -498,6 +542,8 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
         startDate: true,
         endDate: true,
         category: true,
+        type_id: true,
+        type: { select: { id: true, name: true } },
         createdAt: true,
         updatedAt: true,
         _count: {
@@ -526,12 +572,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
       take,
     }),
     prisma.post.count({
-      where: {
-        startDate: { gt: new Date() },
-        is_active: true,
-        is_recruiting: true,
-        approval_status: PostApprovalStatus.APPROVED,
-      },
+      where: feedWhere,
     }),
   ]);
 
@@ -569,6 +610,9 @@ export const getPostById = asyncHandler(async (req: Request, res: Response) => {
       id,
       is_active: true,
       approval_status: PostApprovalStatus.APPROVED,
+    },
+    include: {
+      type: { select: { id: true, name: true } },
     },
   });
 
@@ -717,6 +761,8 @@ export const getAppliedPosts = asyncHandler(
               role: true,
               endDate: true,
               category: true,
+              type_id: true,
+              type: { select: { id: true, name: true } },
               is_urgent: true,
               girls: true,
               boys: true,
@@ -728,6 +774,7 @@ export const getAppliedPosts = asyncHandler(
           },
           status: true,
           content: true,
+          reject_reason: true,
         },
         where: {
           userId: req.userId,
@@ -755,6 +802,9 @@ export const getAppliedPosts = asyncHandler(
           ...post.post,
           status: post.post.endDate > new Date() ? post.status : "closed",
           content: post.content,
+          // Reason the recruiter/admin rejected this application (if any), so the
+          // applicant can see why on their "applied posts" screen.
+          rejectReason: post.status === "REJECTED" ? post.reject_reason || null : null,
         })),
         totalPages: Math.ceil(total / pageSize),
         currentPage: pageNumber,
@@ -958,7 +1008,9 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
 export const updateUserStatus = asyncHandler(
   async (req: Request, res: Response) => {
     const id = req.params.id as string;
-    const { status } = req.body;
+    // `reason`/`remark` carries the rejection reason shown to the applicant.
+    const { status, reason, remark } = req.body;
+    const rejectReason = reason ?? remark;
 
     if (!id) {
       throw handleValidationError("Application ID is required");
@@ -999,7 +1051,14 @@ export const updateUserStatus = asyncHandler(
 
     const updatedApplication = await prisma.postApplied.update({
       where: { id },
-      data: { status },
+      data: {
+        status,
+        // Persist the rejection reason so the applicant can see why they were
+        // rejected; clear it if the status moves away from REJECTED.
+        ...(status === "REJECTED"
+          ? { reject_reason: rejectReason ?? null }
+          : { reject_reason: null }),
+      },
       include: {
         post: {
           select: { title: true }
@@ -1075,6 +1134,7 @@ export const recruiterGetPost = asyncHandler(
           _count: {
             select: { comments: true },
           },
+          type: { select: { id: true, name: true } },
         },
         where: {
           userId: req.userId,
@@ -1210,6 +1270,8 @@ export const getSavePosts = asyncHandler(
             startDate: true,
             endDate: true,
             category: true,
+            type_id: true,
+            type: { select: { id: true, name: true } },
             createdAt: true,
             updatedAt: true,
             _count: {
@@ -1266,6 +1328,7 @@ export const getNearbyPosts = asyncHandler(
     const radiusKm = parseFloat(radius as string) || 10;
     const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
     const pageSize = Math.max(parseInt(limit as string, 10) || 20, 1);
+    const typeId = req.query.type_id ? parseInt(req.query.type_id as string, 10) : undefined;
 
     // Get all active posts with coordinates
     const allPosts = await prisma.post.findMany({
@@ -1276,6 +1339,7 @@ export const getNearbyPosts = asyncHandler(
         approval_status: PostApprovalStatus.APPROVED,
         latitude: { not: null },
         longitude: { not: null },
+        ...(typeId && !Number.isNaN(typeId) ? { type_id: typeId } : {}),
       },
       select: {
         id: true,
@@ -1302,6 +1366,8 @@ export const getNearbyPosts = asyncHandler(
         startDate: true,
         endDate: true,
         category: true,
+        type_id: true,
+        type: { select: { id: true, name: true } },
         latitude: true,
         longitude: true,
         createdAt: true,

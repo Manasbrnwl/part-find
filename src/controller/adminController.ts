@@ -99,10 +99,15 @@ export const toggleUserStatus = asyncHandler(async (req: Request, res: Response)
  */
 export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
   const status = req.query.status as string | undefined;
-  const where =
-    status && status in PostApprovalStatus
-      ? { approval_status: status as PostApprovalStatus }
-      : {};
+  const typeId = req.query.type_id ? parseInt(req.query.type_id as string, 10) : undefined;
+
+  const where: any = {};
+  if (status && status in PostApprovalStatus) {
+    where.approval_status = status as PostApprovalStatus;
+  }
+  if (typeId && !Number.isNaN(typeId)) {
+    where.type_id = typeId;
+  }
 
   const posts = await prisma.post.findMany({
     where,
@@ -116,6 +121,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
           recruiter_company_name: true,
         }
       },
+      type: { select: { id: true, name: true } },
       _count: {
         select: { comments: true } // comments are the applications
       }
@@ -255,6 +261,95 @@ export const getAllApplications = asyncHandler(async (req: Request, res: Respons
 });
 
 /**
+ * GET /admin/posts/:id/applicants
+ * Full applicant breakdown for a single post (admin can view ANY post).
+ * Returns per-status counts plus the grouped lists: pending, approved, rejected
+ * (with reject_reason), withdrawn (CANCELLED, with the withdrawal reason) and
+ * not-present.
+ */
+export const getPostApplicants = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+
+  const post = await prisma.post.findUnique({
+    where: { id },
+    include: {
+      user: { select: { id: true, name: true, email: true, recruiter_company_name: true } },
+      type: { select: { id: true, name: true } },
+    },
+  });
+
+  if (!post) {
+    throw handleNotFoundError("Post");
+  }
+
+  const applications = await prisma.postApplied.findMany({
+    where: { postId: id },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      status: true,
+      content: true,
+      remark: true,
+      reject_reason: true,
+      attended: true,
+      createdAt: true,
+      updatedAt: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone_number: true,
+          gender: true,
+          is_active: true,
+          userImages: {
+            where: { is_deleted: false },
+            select: { image: true },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+
+  // Map each application to a normalized shape, surfacing the right reason field.
+  const shape = (a: (typeof applications)[number]) => ({
+    ...a,
+    rejectReason: a.reject_reason || null,
+    withdrawReason: a.status === "CANCELLED" ? a.remark || "No reason provided" : null,
+  });
+
+  const pending = applications.filter((a) => a.status === "PENDING").map(shape);
+  const approved = applications.filter((a) => a.status === "APPROVED").map(shape);
+  const rejected = applications.filter((a) => a.status === "REJECTED").map(shape);
+  const withdrawn = applications.filter((a) => a.status === "CANCELLED").map(shape);
+  const notPresent = applications.filter((a) => a.status === "NOT_PRESENT").map(shape);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      post,
+      counts: {
+        total: applications.length,
+        pending: pending.length,
+        approved: approved.length,
+        rejected: rejected.length,
+        withdrawn: withdrawn.length,
+        notPresent: notPresent.length,
+      },
+      pending,
+      approved,
+      rejected,
+      withdrawn,
+      notPresent,
+      baseUrl: process.env.BASE_URL
+        ? `${process.env.BASE_URL}/api/v1/images/profile/`
+        : `${req.protocol}://${req.hostname}/api/v1/images/profile/`,
+    },
+  });
+});
+
+/**
  * Delete / deactivate an application (remove candidate application)
  */
 export const deleteApplication = asyncHandler(async (req: Request, res: Response) => {
@@ -299,7 +394,13 @@ export const updateApplicationStatus = asyncHandler(async (req: Request, res: Re
     where: { id },
     data: {
       ...(status && { status }),
-      ...(remark !== undefined && { remark }),
+      // A rejection reason is stored in the dedicated reject_reason field (shown
+      // to the applicant); `remark` stays reserved for the withdrawal reason.
+      ...(status === "REJECTED"
+        ? { reject_reason: remark ?? null }
+        : remark !== undefined
+        ? { remark }
+        : {}),
     },
     include: {
       user: {

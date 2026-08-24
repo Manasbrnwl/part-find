@@ -147,6 +147,11 @@ model Post {
   longitude      Float?
   category       String?
 
+  // Employment type of the post (Part-Time, Full-Time, ...). Nullable so existing
+  // posts stay valid; managed through the PostType table.
+  type_id        Int?
+  type           PostType?      @relation(fields: [type_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
   // Admin moderation: a new post is PENDING and NOT shown to users until an
   // admin approves it. Existing posts are backfilled to APPROVED in the migration.
   approval_status PostApprovalStatus @default(PENDING)
@@ -172,13 +177,25 @@ model postApplied {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   status    Status?  @default(PENDING)
-  remark    String?
+  remark    String?  // withdrawal reason (set by the applicant when they cancel)
+  reject_reason String? // reason the recruiter/admin rejected this application
   attended     Boolean   @default(false) // recruiter marked this applicant as present at the event
   attended_at  DateTime?
   post      Post     @relation(fields: [postId], references: [id])
   user      User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, postId], map: "user_post_unique")
+}
+
+// Employment type of a post (Part-Time, Full-Time, Internship, ...). Admin-managed.
+model PostType {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(100)
+  description String?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  posts       Post[]
 }
 
 model JobCategory {
