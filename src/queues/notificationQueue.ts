@@ -90,7 +90,7 @@ export interface CompletionCertificateData {
     userName: string;
     userEmail: string;
     postTitle: string;
-    rating: number;
+    rating: number | null; // null = participation/attendance certificate (unrated)
     recruiterName: string;
     issuedAt: string; // ISO string (serialized for queue)
     fcmToken?: string;

@@ -213,15 +213,21 @@ export function absentWarningTemplate(userName: string, postTitle: string): { su
 /**
  * Generate the certificate HTML (reused for email body and PDF rendering)
  */
-export function generateCertificateHtml(userName: string, postTitle: string, rating: number, recruiterName: string, issuedAt: Date): string {
+export function generateCertificateHtml(userName: string, postTitle: string, rating: number | null, recruiterName: string, issuedAt: Date): string {
     const dateStr = issuedAt.toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" });
-    const stars = "⭐".repeat(rating);
+    const isRated = rating != null && rating > 0;
+    const stars = isRated ? "⭐".repeat(rating as number) : "";
+    const certTitle = isRated ? "Certificate of Completion" : "Certificate of Participation";
+    const roleLine = isRated ? "has successfully completed the role for" : "attended the event";
+    const attribution = isRated
+        ? `as rated by <strong>${esc(recruiterName)}</strong>`
+        : `presented by <strong>${esc(recruiterName)}</strong>`;
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Certificate of Completion</title>
+  <title>${certTitle}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap');
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -251,15 +257,15 @@ export function generateCertificateHtml(userName: string, postTitle: string, rat
     <div class="corner tl"></div><div class="corner tr"></div>
     <div class="corner bl"></div><div class="corner br"></div>
     <div class="brand">Part Find</div>
-    <h1>Certificate of Completion</h1>
+    <h1>${certTitle}</h1>
     <div class="subtitle">Official Recognition</div>
     <div class="divider"></div>
     <div class="certify-text">This is to certify that</div>
     <div class="recipient">${esc(userName)}</div>
-    <div class="details">has successfully completed the role for</div>
+    <div class="details">${roleLine}</div>
     <div class="details"><strong>${esc(postTitle)}</strong></div>
-    <div class="rating">${stars}</div>
-    <div class="details">as rated by <strong>${esc(recruiterName)}</strong></div>
+    ${isRated ? `<div class="rating">${stars}</div>` : `<div style="margin:16px 0 24px;"></div>`}
+    <div class="details">${attribution}</div>
     <div class="footer-grid">
       <div class="footer-item"><div style="font-size:14px;color:#666;">${dateStr}</div><div class="footer-label">Date of Issue</div></div>
       <div class="seal">✦</div>
@@ -313,27 +319,33 @@ export function inactiveReminderTemplate(userName: string | null, role: string |
 /**
  * Completion certificate email template
  */
-export function completionCertificateTemplate(userName: string, postTitle: string, rating: number, recruiterName: string, issuedAt: Date): { subject: string; text: string; html: string } {
-    const subject = `🏆 Your Certificate of Completion for "${postTitle}"`;
+export function completionCertificateTemplate(userName: string, postTitle: string, rating: number | null, recruiterName: string, issuedAt: Date): { subject: string; text: string; html: string } {
+    const isRated = rating != null && rating > 0;
+    const certKind = isRated ? "Completion" : "Participation";
+    const subject = `🏆 Your Certificate of ${certKind} for "${postTitle}"`;
     const dateStr = issuedAt.toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" });
     const name = esc(userName);
     const title = esc(postTitle);
     const recruiter = esc(recruiterName);
-    const stars = "★".repeat(rating) + "☆".repeat(Math.max(0, 5 - rating));
+    const stars = isRated ? "★".repeat(rating as number) + "☆".repeat(Math.max(0, 5 - (rating as number))) : "";
 
-    const text = `Congratulations ${userName}! You received a ${rating}-star rating from ${recruiterName} for "${postTitle}". Your Certificate of Completion is attached as a PDF.`;
+    const text = isRated
+        ? `Congratulations ${userName}! You received a ${rating}-star rating from ${recruiterName} for "${postTitle}". Your Certificate of Completion is attached as a PDF.`
+        : `Congratulations ${userName}! Thank you for attending "${postTitle}". Your Certificate of Participation is attached as a PDF.`;
 
     const html = baseLayout(`
         ${heading(`Congratulations, ${name}! 🎉`, TEAL_DARK)}
         <p style="margin:0 0 16px;color:${INK};font-size:15px;line-height:1.6;text-align:center;">
-            You've earned a Certificate of Completion for your work on:
+            ${isRated
+                ? "You've earned a Certificate of Completion for your work on:"
+                : "You've earned a Certificate of Participation for attending:"}
         </p>
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 8px;">
             <tr>
                 <td align="center" style="background-color:${TEAL_TINT};border-radius:10px;padding:20px 24px;">
                     <div style="color:${TEAL_DARK};font-size:17px;font-weight:700;line-height:1.4;">${title}</div>
-                    <div style="color:${ORANGE};font-size:20px;letter-spacing:3px;margin-top:8px;">${stars}</div>
-                    <div style="color:${MUTED};font-size:13px;margin-top:6px;">rated by ${recruiter}</div>
+                    ${isRated ? `<div style="color:${ORANGE};font-size:20px;letter-spacing:3px;margin-top:8px;">${stars}</div>` : ``}
+                    <div style="color:${MUTED};font-size:13px;margin-top:6px;">${isRated ? `rated by ${recruiter}` : `presented by ${recruiter}`}</div>
                 </td>
             </tr>
         </table>
@@ -341,7 +353,7 @@ export function completionCertificateTemplate(userName: string, postTitle: strin
             Your certificate is attached as a <strong>PDF</strong>. You can also download it anytime from the ${BRAND_NAME} app.
         </p>
         <p style="margin:14px 0 0;color:${FAINT};font-size:12px;text-align:center;">Issued on ${dateStr}</p>
-    `, `Your Certificate of Completion for "${postTitle}" is ready`);
+    `, `Your Certificate of ${certKind} for "${postTitle}" is ready`);
 
     return { subject, text, html };
 }

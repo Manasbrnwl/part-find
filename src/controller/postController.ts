@@ -15,6 +15,7 @@ import {
   queueNewApplicationNotification,
   queueApplicationStatusNotification,
   queueAbsentWarning,
+  queueCompletionCertificate,
 } from "../queues/notificationQueue";
 import { logger } from "../../utils/logger";
 
@@ -380,17 +381,58 @@ export const markAttendance = asyncHandler(async (req: Request, res: Response) =
 
   let certificatesIssued = 0;
   if (isAttended) {
-    // Attendees get a participation certificate (idempotent via unique post+user).
-    const result = await prisma.certificate.createMany({
-      data: validUserIds.map((uid) => ({
-        userId: uid,
-        postId,
-        recruiterId: post.userId,
-        rating: null,
-      })),
-      skipDuplicates: true,
+    // Only users without an existing certificate get a fresh one — so re-marking
+    // attendance never re-issues or re-emails a certificate already delivered.
+    const preExisting = await prisma.certificate.findMany({
+      where: { postId, userId: { in: validUserIds } },
+      select: { userId: true },
     });
-    certificatesIssued = result.count;
+    const alreadyHave = new Set(preExisting.map((c) => c.userId));
+    const newCertUserIds = validUserIds.filter((uid) => !alreadyHave.has(uid));
+
+    if (newCertUserIds.length > 0) {
+      const result = await prisma.certificate.createMany({
+        data: newCertUserIds.map((uid) => ({
+          userId: uid,
+          postId,
+          recruiterId: post.userId,
+          rating: null, // participation certificate — no rating yet
+        })),
+        skipDuplicates: true,
+      });
+      certificatesIssued = result.count;
+
+      // Deliver the participation certificate (email w/ PDF + push) to attendees.
+      const [recruiter, users, certs] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: post.userId },
+          select: { name: true },
+        }),
+        prisma.user.findMany({
+          where: { id: { in: newCertUserIds } },
+          select: { id: true, name: true, email: true, fcm_token: true },
+        }),
+        prisma.certificate.findMany({
+          where: { postId, userId: { in: newCertUserIds } },
+          select: { userId: true, issuedAt: true },
+        }),
+      ]);
+      const issuedAtByUser = new Map(certs.map((c) => [c.userId, c.issuedAt]));
+
+      for (const u of users) {
+        if (!u.email) continue;
+        await queueCompletionCertificate({
+          userId: u.id,
+          userName: u.name || "User",
+          userEmail: u.email,
+          postTitle: post.title,
+          rating: null,
+          recruiterName: recruiter?.name || "Recruiter",
+          issuedAt: (issuedAtByUser.get(u.id) || new Date()).toISOString(),
+          fcmToken: u.fcm_token || undefined,
+        });
+      }
+    }
   } else {
     // Un-marking attendance removes attendance-only (unrated) certificates.
     await prisma.certificate.deleteMany({
