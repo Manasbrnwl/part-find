@@ -53,7 +53,11 @@ components:
           type: string
         role:
           type: string
-          enum: [USER, ADMIN, RECRUITER]
+          enum: [USER, ADMIN, RECRUITER, SERVICE_SEEKER]
+          description: >-
+            USER = student/job-seeker; RECRUITER = posts jobs & self-serves;
+            SERVICE_SEEKER = client who asks PartFind to source gigs/candidates
+            (managed service); ADMIN = platform admin.
         is_active:
           type: boolean
         experience:
@@ -298,7 +302,13 @@ paths:
   /auth/request-otp:
     post:
       tags: [Auth]
-      summary: Request OTP for login
+      summary: Request OTP for login / signup
+      description: >-
+        Sends a login OTP. Provide either `email` or `phone_number`. On first-time
+        signup, `role` sets the account type (USER, RECRUITER or SERVICE_SEEKER);
+        it is ignored for existing users. The response's `isNewUser` reflects
+        profile completeness using the business check for RECRUITER/SERVICE_SEEKER
+        and the personal check for USER.
       security: []
       requestBody:
         required: true
@@ -306,11 +316,17 @@ paths:
           application/json:
             schema:
               type: object
-              required: [email]
               properties:
                 email:
                   type: string
                   format: email
+                phone_number:
+                  type: string
+                  description: Alternative to email
+                role:
+                  type: string
+                  enum: [USER, RECRUITER, SERVICE_SEEKER]
+                  description: Account type for a first-time signup (ignored for existing users)
       responses:
         '200':
           description: OTP sent successfully
