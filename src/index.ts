@@ -25,8 +25,6 @@ import YAML from 'yamljs';
 import path from 'path';
 
 
-import { apiLimiter } from "./middleware/rateLimiter";
-
 dotenv.config({ override: true });
 
 const app = express();
@@ -39,9 +37,6 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors());
 app.use(morgan("dev", { stream: morganStream }));
-
-// Rate limiting
-app.use("/api/v1", apiLimiter);
 
 try {
   const swaggerPath = path.join(process.cwd(), 'swagger.yml');

@@ -37,7 +37,7 @@ async function processJobReminder(data: JobReminderData) {
     }
 
     await sendFCMNotification(data.fcmToken, {
-        title: "📅 Post Reminder",
+        title: "📅 Event Reminder",
         body: `Your job "${data.postTitle}" starts tomorrow at ${data.location}`,
         reminderId: data.postId,
         type: NotificationType.JOB_REMINDER,
@@ -77,7 +77,7 @@ async function processNewJobPosted(data: NewJobPostedData) {
     }
 
     await sendFCMToMultipleTokens(data.fcmTokens, {
-        title: "🆕 New Job Posted!",
+        title: "🆕 New Event Posted!",
         body: `"${data.postTitle}" at ${data.companyName || "a company"} in ${data.location || "TBD"}`,
         reminderId: data.postId,
         type: NotificationType.NEW_JOB_POSTED,
@@ -350,12 +350,12 @@ export function startNotificationWorker() {
             "notifications",
             async (job: Job) => {
                 logger.info(`Processing notification job: ${job.name} (${job.id})`);
-        
+
                 switch (job.name) {
                     case NotificationType.JOB_REMINDER:
                         await processJobReminder(job.data as JobReminderData);
                         break;
-        
+
                     case NotificationType.RATING_RECEIVED:
                         await processRatingNotification(job.data as RatingNotificationData);
                         break;
@@ -375,7 +375,7 @@ export function startNotificationWorker() {
                     case NotificationType.LOW_RATING_WARNING:
                         await processLowRatingWarning(job.data as LowRatingWarningData);
                         break;
-                    
+
                     case NotificationType.ABSENT_WARNING:
                         await processAbsentWarning(job.data as AbsentWarningData);
                         break;
