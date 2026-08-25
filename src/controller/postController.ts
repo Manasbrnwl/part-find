@@ -83,6 +83,7 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
     categories,
     category,
     type_id,
+    pay_period,
     latitude,
     longitude,
   } = req.body;
@@ -94,6 +95,16 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
   }
   if (!title || !content) {
     throw handleValidationError("Title and content are required");
+  }
+
+  // Validate the time basis (pay period) if supplied.
+  const PAY_PERIODS = ["HOURLY", "DAILY", "MONTHLY"];
+  let payPeriod: string | null = null;
+  if (pay_period !== undefined && pay_period !== null && pay_period !== "") {
+    payPeriod = String(pay_period).toUpperCase();
+    if (!PAY_PERIODS.includes(payPeriod)) {
+      throw handleValidationError("pay_period must be one of HOURLY, DAILY, MONTHLY");
+    }
   }
 
   // Validate the employment type if one was supplied.
@@ -158,6 +169,7 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
       company_name,
       category,
       type_id: typeId,
+      pay_period: payPeriod as any,
       girls,
       boys,
       lunch,
@@ -217,6 +229,7 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
     lunch,
     category,
     type_id,
+    pay_period,
     latitude,
     longitude,
   } = req.body;
@@ -265,6 +278,20 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
     }
   }
 
+  // Resolve the time basis: undefined = leave unchanged, "" / null = clear.
+  let payPeriodUpdate: string | null | undefined = undefined;
+  if (pay_period !== undefined) {
+    if (pay_period === null || pay_period === "") {
+      payPeriodUpdate = null;
+    } else {
+      const pp = String(pay_period).toUpperCase();
+      if (!["HOURLY", "DAILY", "MONTHLY"].includes(pp)) {
+        throw handleValidationError("pay_period must be one of HOURLY, DAILY, MONTHLY");
+      }
+      payPeriodUpdate = pp;
+    }
+  }
+
   const updatedPost = await prisma.post.update({
     where: { id },
     data: {
@@ -285,6 +312,7 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
       company_name,
       category: category || post.category,
       ...(typeIdUpdate !== undefined && { type_id: typeIdUpdate }),
+      ...(payPeriodUpdate !== undefined && { pay_period: payPeriodUpdate as any }),
       girls,
       boys,
       lunch,
@@ -543,6 +571,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
         endDate: true,
         category: true,
         type_id: true,
+        pay_period: true,
         type: { select: { id: true, name: true } },
         createdAt: true,
         updatedAt: true,
@@ -762,6 +791,7 @@ export const getAppliedPosts = asyncHandler(
               endDate: true,
               category: true,
               type_id: true,
+              pay_period: true,
               type: { select: { id: true, name: true } },
               is_urgent: true,
               girls: true,
@@ -850,6 +880,8 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
         status: true,
         content: true,
         remark: true,
+        attended: true,
+        attended_at: true,
         user: {
           select: {
             id: true,
@@ -947,6 +979,7 @@ export const listPosts = asyncHandler(async (req: Request, res: Response) => {
 
   const listWithRatings = list.map((app) => ({
     ...app,
+    is_attended: app.attended,
     user: {
       ...app.user,
       overallRating: ratingMap.get(app.user.id) || {
@@ -1271,6 +1304,7 @@ export const getSavePosts = asyncHandler(
             endDate: true,
             category: true,
             type_id: true,
+            pay_period: true,
             type: { select: { id: true, name: true } },
             createdAt: true,
             updatedAt: true,
@@ -1367,6 +1401,7 @@ export const getNearbyPosts = asyncHandler(
         endDate: true,
         category: true,
         type_id: true,
+        pay_period: true,
         type: { select: { id: true, name: true } },
         latitude: true,
         longitude: true,

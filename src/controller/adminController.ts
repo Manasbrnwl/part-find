@@ -315,6 +315,7 @@ export const getPostApplicants = asyncHandler(async (req: Request, res: Response
   // Map each application to a normalized shape, surfacing the right reason field.
   const shape = (a: (typeof applications)[number]) => ({
     ...a,
+    is_attended: a.attended,
     rejectReason: a.reject_reason || null,
     withdrawReason: a.status === "CANCELLED" ? a.remark || "No reason provided" : null,
   });

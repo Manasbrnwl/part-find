@@ -152,6 +152,9 @@ model Post {
   type_id        Int?
   type           PostType?      @relation(fields: [type_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
+  // Time basis of the post — whether it is paid/measured hourly, daily or monthly.
+  pay_period     PayPeriod?
+
   // Admin moderation: a new post is PENDING and NOT shown to users until an
   // admin approves it. Existing posts are backfilled to APPROVED in the migration.
   approval_status PostApprovalStatus @default(PENDING)
@@ -257,6 +260,13 @@ enum PostApprovalStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+// Time basis for a post's rate/engagement.
+enum PayPeriod {
+  HOURLY
+  DAILY
+  MONTHLY
 }
 
 model Rating {
