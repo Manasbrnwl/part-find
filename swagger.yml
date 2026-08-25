@@ -126,6 +126,10 @@ components:
         type_id:
           type: integer
           description: Employment type ID (from GET /post/types)
+        pay_period:
+          type: string
+          enum: [HOURLY, DAILY, MONTHLY]
+          description: Time basis of the post (hourly / daily / monthly)
         is_active:
           type: boolean
         approval_status:
@@ -781,6 +785,10 @@ paths:
                 type_id:
                   type: integer
                   description: Employment type ID (from GET /post/types). Optional.
+                pay_period:
+                  type: string
+                  enum: [HOURLY, DAILY, MONTHLY]
+                  description: Time basis of the post (hourly / daily / monthly). Optional.
       responses:
         '201':
           description: Post created
@@ -990,8 +998,9 @@ paths:
       tags: [Posts]
       summary: Get applicants for a post (Recruiter/Admin)
       description: >-
-        Returns the post's applicants grouped by status. Includes a separate
-        `withdrawn` list, each entry carrying the withdrawal `remark` (reason).
+        Returns the post's applicants grouped by status. Each applicant carries
+        `is_attended` (whether they were marked present at the event). Includes a
+        separate `withdrawn` list, each entry carrying the withdrawal `remark`.
       parameters:
         - name: id
           in: path
@@ -1584,7 +1593,8 @@ paths:
       description: >-
         Full applicant breakdown for a single post (any post). Returns per-status
         counts plus grouped lists: pending, approved, rejected (with reject reason),
-        withdrawn (CANCELLED, with withdrawal reason) and not-present.
+        withdrawn (CANCELLED, with withdrawal reason) and not-present. Each applicant
+        includes `is_attended` (marked present at the event).
       parameters:
         - name: id
           in: path
