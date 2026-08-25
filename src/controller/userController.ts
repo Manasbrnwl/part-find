@@ -184,6 +184,7 @@ export const updateProfile = asyncHandler(
 
     const {
       name,
+      email,
       phone_number,
       date_of_birth,
       address,
@@ -197,6 +198,24 @@ export const updateProfile = asyncHandler(
       skills,
       intro_video_link,
     } = req.body;
+
+    // Email / phone number changes are login identifiers, so they must stay
+    // unique. Only validate + apply them when actually changed.
+    const newEmail = email ? String(email).trim().toLowerCase() : undefined;
+    if (newEmail && newEmail !== user.email) {
+      const existingEmail = await prisma.user.findUnique({ where: { email: newEmail } });
+      if (existingEmail && existingEmail.id !== userId) {
+        throw handleValidationError("This email is already in use by another account");
+      }
+    }
+
+    const newPhone = phone_number ? String(phone_number).trim() : undefined;
+    if (newPhone && newPhone !== user.phone_number) {
+      const existingPhone = await prisma.user.findUnique({ where: { phone_number: newPhone } });
+      if (existingPhone && existingPhone.id !== userId) {
+        throw handleValidationError("This phone number is already in use by another account");
+      }
+    }
 
     const parseToArray = (input: any): string[] | undefined => {
       if (!input) return undefined;
@@ -269,7 +288,8 @@ export const updateProfile = asyncHandler(
       where: { id: userId },
       data: {
         name,
-        phone_number,
+        ...(newEmail && { email: newEmail }),
+        ...(newPhone && { phone_number: newPhone }),
         date_of_birth: date_of_birth
           ? new Date(date_of_birth)
           : user.date_of_birth,

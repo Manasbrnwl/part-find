@@ -531,6 +531,11 @@ paths:
     put:
       tags: [Users]
       summary: Update user profile
+      description: >-
+        Updates the user's profile. `email` and `phone_number` are login
+        identifiers and must stay unique — changing either to a value already
+        used by another account returns a validation error. Both are only applied
+        when a (changed) value is provided.
       requestBody:
         content:
           multipart/form-data:
@@ -539,8 +544,13 @@ paths:
               properties:
                 name:
                   type: string
+                email:
+                  type: string
+                  format: email
+                  description: New email (must be unique across accounts)
                 phone_number:
                   type: string
+                  description: New phone number (must be unique across accounts)
                 date_of_birth:
                   type: string
                   format: date
