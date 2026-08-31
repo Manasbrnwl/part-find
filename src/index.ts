@@ -72,10 +72,6 @@ app.use("/api/v1/website", websiteRoutes);
 app.use("/api/v1/legal", legalRoutes);
 app.use("/api/v1/referral", referralRoutes);
 
-
-// Legacy route - consider migrating this to proper controller pattern
-app.use("/api/v1/seed", require("./routes/user"));
-
 // Image serving — proxies profile/recruiter images from S3 (or local disk in
 // fallback mode). Same /api/v1/images/... URLs as before, so clients are unchanged.
 app.use("/api/v1/images", imageRoutes);
