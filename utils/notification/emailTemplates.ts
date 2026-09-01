@@ -8,7 +8,7 @@
  *  - Palette is derived from the logo: teal primary + orange accent.
  */
 
-import { PARTFIND_LOGO_CID } from "./logoAsset";
+import { PARTFIND_LOGO_CID, PARTFIND_LOGO_DATA_URI } from "./logoAsset";
 
 const BRAND_NAME = "Part Find";
 
@@ -216,7 +216,7 @@ export function absentWarningTemplate(userName: string, postTitle: string): { su
 export function generateCertificateHtml(userName: string, postTitle: string, rating: number | null, recruiterName: string, issuedAt: Date): string {
     const dateStr = issuedAt.toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" });
     const isRated = rating != null && rating > 0;
-    const stars = isRated ? "⭐".repeat(rating as number) : "";
+    const stars = isRated ? "★".repeat(rating as number) + "☆".repeat(5 - (rating as number)) : "";
     const certTitle = isRated ? "Certificate of Completion" : "Certificate of Participation";
     const roleLine = isRated ? "has successfully completed the role for" : "attended the event";
     const attribution = isRated
@@ -229,47 +229,49 @@ export function generateCertificateHtml(userName: string, postTitle: string, rat
   <meta charset="UTF-8" />
   <title>${certTitle}</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap');
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #f5f0e8; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: 'EB Garamond', Georgia, serif; }
-    .certificate { width: 800px; min-height: 560px; background: #fffdf6; border: 12px double #b59a4a; padding: 48px 64px; position: relative; text-align: center; box-shadow: 0 8px 40px rgba(0,0,0,0.18); }
-    .corner { position: absolute; width: 48px; height: 48px; border-color: #c9a84c; border-style: solid; }
-    .corner.tl { top: 12px; left: 12px; border-width: 3px 0 0 3px; }
-    .corner.tr { top: 12px; right: 12px; border-width: 3px 3px 0 0; }
-    .corner.bl { bottom: 12px; left: 12px; border-width: 0 0 3px 3px; }
-    .corner.br { bottom: 12px; right: 12px; border-width: 0 3px 3px 0; }
-    .brand { font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 4px; color: #b59a4a; text-transform: uppercase; margin-bottom: 20px; }
-    h1 { font-family: 'Cinzel', serif; font-size: 36px; color: #2d2200; letter-spacing: 2px; margin-bottom: 8px; }
-    .subtitle { font-size: 14px; color: #888; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 32px; }
-    .divider { width: 120px; height: 2px; background: linear-gradient(90deg, transparent, #b59a4a, transparent); margin: 0 auto 24px; }
-    .certify-text { font-size: 16px; color: #555; margin-bottom: 16px; font-style: italic; }
-    .recipient { font-family: 'Cinzel', serif; font-size: 32px; color: #1a3a2a; margin-bottom: 24px; border-bottom: 1px solid #c9a84c; display: inline-block; padding-bottom: 4px; }
-    .details { font-size: 16px; color: #444; margin-bottom: 8px; line-height: 1.8; }
-    .rating { font-size: 22px; margin: 16px 0 24px; }
-    .footer-grid { display: flex; justify-content: space-between; margin-top: 40px; align-items: flex-end; }
+    body { background: #fbf8f1; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: Georgia, 'Times New Roman', serif; }
+    .certificate { width: 800px; min-height: 560px; background: #ffffff; border: 2px solid #c8a94e; outline: 1px solid #e6d6a0; outline-offset: -9px; padding: 40px 60px 34px; position: relative; text-align: center; }
+    .corner { position: absolute; width: 34px; height: 34px; border-color: #c8a94e; border-style: solid; }
+    .corner.tl { top: 22px; left: 22px; border-width: 2.5px 0 0 2.5px; }
+    .corner.tr { top: 22px; right: 22px; border-width: 2.5px 2.5px 0 0; }
+    .corner.bl { bottom: 22px; left: 22px; border-width: 0 0 2.5px 2.5px; }
+    .corner.br { bottom: 22px; right: 22px; border-width: 0 2.5px 2.5px 0; }
+    .logo { height: 60px; margin: 0 auto 6px; display: block; }
+    .subtitle { font-size: 11px; letter-spacing: 3px; color: #b8ac93; text-transform: uppercase; }
+    h1 { font-size: 33px; color: #2a2417; letter-spacing: 1px; margin-top: 16px; }
+    .divider { width: 140px; height: 2px; background: linear-gradient(90deg, transparent, #c8a94e, transparent); margin: 14px auto 0; }
+    .certify-text { font-size: 15px; color: #7a7261; margin-top: 22px; font-style: italic; }
+    .recipient { font-size: 34px; font-weight: bold; color: #1c3a2b; margin-top: 14px; padding-bottom: 6px; display: inline-block; border-bottom: 1px solid #d9c583; }
+    .role { font-size: 15px; color: #544d3d; margin-top: 20px; }
+    .post { font-size: 19px; font-weight: bold; color: #2a2417; margin-top: 8px; }
+    .rating { font-size: 26px; color: #c8a94e; letter-spacing: 4px; margin-top: 16px; }
+    .attr { font-size: 14px; color: #544d3d; margin-top: 16px; }
+    .footer-grid { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 40px; }
     .footer-item { text-align: center; }
-    .footer-label { font-size: 12px; color: #aaa; letter-spacing: 2px; text-transform: uppercase; border-top: 1px solid #c9a84c; padding-top: 6px; margin-top: 8px; width: 160px; }
-    .seal { width: 80px; height: 80px; border: 3px solid #b59a4a; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; font-size: 28px; color: #b59a4a; }
+    .footer-item .val { font-size: 14px; color: #4a4535; }
+    .footer-label { font-size: 10px; color: #a89e86; letter-spacing: 2px; text-transform: uppercase; border-top: 1px solid #d9c583; padding-top: 6px; margin-top: 6px; width: 160px; }
+    .seal { width: 56px; height: 56px; border: 2.5px solid #c8a94e; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; font-size: 24px; color: #c8a94e; }
   </style>
 </head>
 <body>
   <div class="certificate">
     <div class="corner tl"></div><div class="corner tr"></div>
     <div class="corner bl"></div><div class="corner br"></div>
-    <div class="brand">Part Find</div>
-    <h1>${certTitle}</h1>
+    <img class="logo" src="${PARTFIND_LOGO_DATA_URI}" alt="Part Find" />
     <div class="subtitle">Official Recognition</div>
+    <h1>${certTitle}</h1>
     <div class="divider"></div>
     <div class="certify-text">This is to certify that</div>
     <div class="recipient">${esc(userName)}</div>
-    <div class="details">${roleLine}</div>
-    <div class="details"><strong>${esc(postTitle)}</strong></div>
-    ${isRated ? `<div class="rating">${stars}</div>` : `<div style="margin:16px 0 24px;"></div>`}
-    <div class="details">${attribution}</div>
+    <div class="role">${roleLine}</div>
+    <div class="post">${esc(postTitle)}</div>
+    ${isRated ? `<div class="rating">${stars}</div>` : ``}
+    <div class="attr">${attribution}</div>
     <div class="footer-grid">
-      <div class="footer-item"><div style="font-size:14px;color:#666;">${dateStr}</div><div class="footer-label">Date of Issue</div></div>
+      <div class="footer-item"><div class="val">${dateStr}</div><div class="footer-label">Date of Issue</div></div>
       <div class="seal">✦</div>
-      <div class="footer-item"><div style="font-size:14px;color:#666;">Part Find</div><div class="footer-label">Authorized By</div></div>
+      <div class="footer-item"><div class="val">Part Find</div><div class="footer-label">Authorized By</div></div>
     </div>
   </div>
 </body>

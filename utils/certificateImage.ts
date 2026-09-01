@@ -1,9 +1,18 @@
 import sharp from "sharp";
+import { PARTFIND_LOGO_DATA_URI } from "./notification/logoAsset";
+
+const esc = (s: string) =>
+    (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/** Trim over-long text so it never overflows the fixed-width certificate. */
+const clip = (s: string, max: number) =>
+    s && s.length > max ? s.slice(0, max - 1).trimEnd() + "…" : s || "";
 
 /**
- * Generates an SVG string representing the certificate of completion.
- * Mirrors the design from generateCertificateHtml but in pure SVG
- * so it can be rendered without a browser/Chromium.
+ * Generates an SVG string for the certificate. A clean, modern design with an
+ * ivory ground, gold frame, the official Part Find logo up top, and the
+ * recipient details centered. Rating stars only show for rated (completion)
+ * certificates; attendance certificates render as "Certificate of Participation".
  */
 export function generateCertificateSvg(
     userName: string,
@@ -17,92 +26,83 @@ export function generateCertificateSvg(
         month: "long",
         day: "numeric",
     });
-    const stars = rating ? "★".repeat(rating) + "☆".repeat(5 - rating) : "";
 
-    // Escape XML-unsafe characters
-    const esc = (s: string) =>
-        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const isRated = rating != null && rating > 0;
+    const stars = isRated ? "★".repeat(rating as number) + "☆".repeat(5 - (rating as number)) : "";
+    const certTitle = isRated ? "Certificate of Completion" : "Certificate of Participation";
+    const roleLine = isRated ? "has successfully completed the role for" : "attended the event";
+    const attribution = isRated
+        ? `as rated by <tspan font-weight="bold">${esc(clip(recruiterName, 42))}</tspan>`
+        : `presented by <tspan font-weight="bold">${esc(clip(recruiterName, 42))}</tspan>`;
 
-    const safeUserName = esc(userName);
-    const safePostTitle = esc(postTitle);
-    const safeRecruiterName = esc(recruiterName);
+    const safeUserName = esc(clip(userName, 40));
+    const safePostTitle = esc(clip(postTitle, 54));
 
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="560" viewBox="0 0 800 560">
+    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="800" height="560" viewBox="0 0 800 560">
   <defs>
     <linearGradient id="divider" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="transparent"/>
-      <stop offset="50%" stop-color="#b59a4a"/>
-      <stop offset="100%" stop-color="transparent"/>
+      <stop offset="0%" stop-color="#c8a94e" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#c8a94e" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#c8a94e" stop-opacity="0"/>
     </linearGradient>
   </defs>
 
-  <!-- Background -->
-  <rect width="800" height="560" fill="#fffdf6"/>
+  <!-- Ground -->
+  <rect width="800" height="560" fill="#fbf8f1"/>
+  <rect x="18" y="18" width="764" height="524" fill="#ffffff"/>
 
-  <!-- Double border -->
-  <rect x="4" y="4" width="792" height="552" rx="2" fill="none" stroke="#b59a4a" stroke-width="2"/>
-  <rect x="12" y="12" width="776" height="536" rx="2" fill="none" stroke="#b59a4a" stroke-width="2"/>
+  <!-- Gold frame -->
+  <rect x="18" y="18" width="764" height="524" fill="none" stroke="#c8a94e" stroke-width="2"/>
+  <rect x="27" y="27" width="746" height="506" fill="none" stroke="#e6d6a0" stroke-width="1"/>
 
-  <!-- Corner accents -->
-  <path d="M24 24 L72 24" stroke="#c9a84c" stroke-width="3" fill="none"/>
-  <path d="M24 24 L24 72" stroke="#c9a84c" stroke-width="3" fill="none"/>
-  <path d="M728 24 L776 24" stroke="#c9a84c" stroke-width="3" fill="none"/>
-  <path d="M776 24 L776 72" stroke="#c9a84c" stroke-width="3" fill="none"/>
-  <path d="M24 536 L72 536" stroke="#c9a84c" stroke-width="3" fill="none"/>
-  <path d="M24 488 L24 536" stroke="#c9a84c" stroke-width="3" fill="none"/>
-  <path d="M728 536 L776 536" stroke="#c9a84c" stroke-width="3" fill="none"/>
-  <path d="M776 488 L776 536" stroke="#c9a84c" stroke-width="3" fill="none"/>
+  <!-- Corner flourishes -->
+  <path d="M40 40 h34 M40 40 v34" stroke="#c8a94e" stroke-width="2.5" fill="none"/>
+  <path d="M760 40 h-34 M760 40 v34" stroke="#c8a94e" stroke-width="2.5" fill="none"/>
+  <path d="M40 520 h34 M40 520 v-34" stroke="#c8a94e" stroke-width="2.5" fill="none"/>
+  <path d="M760 520 h-34 M760 520 v-34" stroke="#c8a94e" stroke-width="2.5" fill="none"/>
 
-  <!-- Brand -->
-  <text x="400" y="72" text-anchor="middle" font-family="Georgia, serif" font-size="13" font-weight="bold" letter-spacing="4" fill="#b59a4a">PART FIND</text>
-
-  <!-- Title -->
-  <text x="400" y="118" text-anchor="middle" font-family="Georgia, serif" font-size="36" font-weight="bold" fill="#2d2200" letter-spacing="2">Certificate of Completion</text>
+  <!-- Official Part Find logo (wordmark) -->
+  <image xlink:href="${PARTFIND_LOGO_DATA_URI}" x="314" y="48" width="172" height="60" preserveAspectRatio="xMidYMid meet"/>
 
   <!-- Subtitle -->
-  <text x="400" y="144" text-anchor="middle" font-family="Georgia, serif" font-size="14" fill="#888" letter-spacing="3">OFFICIAL RECOGNITION</text>
+  <text x="400" y="134" text-anchor="middle" font-family="Georgia, serif" font-size="11" letter-spacing="3" fill="#b8ac93">OFFICIAL RECOGNITION</text>
 
-  <!-- Divider -->
-  <rect x="340" y="164" width="120" height="2" fill="url(#divider)"/>
+  <!-- Title -->
+  <text x="400" y="182" text-anchor="middle" font-family="Georgia, serif" font-size="32" font-weight="bold" letter-spacing="1" fill="#2a2417">${certTitle}</text>
+  <rect x="330" y="198" width="140" height="2" fill="url(#divider)"/>
 
-  <!-- Certify text -->
-  <text x="400" y="200" text-anchor="middle" font-family="Georgia, serif" font-size="16" font-style="italic" fill="#555">This is to certify that</text>
+  <!-- Certify -->
+  <text x="400" y="234" text-anchor="middle" font-family="Georgia, serif" font-size="15" font-style="italic" fill="#7a7261">This is to certify that</text>
 
-  <!-- Recipient name -->
-  <text x="400" y="248" text-anchor="middle" font-family="Georgia, serif" font-size="32" font-weight="bold" fill="#1a3a2a">${safeUserName}</text>
-  <line x1="280" y1="256" x2="520" y2="256" stroke="#c9a84c" stroke-width="1"/>
+  <!-- Recipient -->
+  <text x="400" y="280" text-anchor="middle" font-family="Georgia, serif" font-size="34" font-weight="bold" fill="#1c3a2b">${safeUserName}</text>
+  <line x1="250" y1="294" x2="550" y2="294" stroke="#d9c583" stroke-width="1"/>
 
-  <!-- Role text -->
-  <text x="400" y="296" text-anchor="middle" font-family="Georgia, serif" font-size="16" fill="#444">has successfully completed the role for</text>
+  <!-- Role + post -->
+  <text x="400" y="328" text-anchor="middle" font-family="Georgia, serif" font-size="15" fill="#544d3d">${roleLine}</text>
+  <text x="400" y="356" text-anchor="middle" font-family="Georgia, serif" font-size="19" font-weight="bold" fill="#2a2417">${safePostTitle}</text>
 
-  <!-- Post title -->
-  <text x="400" y="328" text-anchor="middle" font-family="Georgia, serif" font-size="18" font-weight="bold" fill="#444">${safePostTitle}</text>
+  ${isRated ? `<text x="400" y="396" text-anchor="middle" font-family="Georgia, serif" font-size="26" fill="#c8a94e" letter-spacing="4">${stars}</text>` : ``}
 
-  <!-- Rating stars -->
-  <text x="400" y="368" text-anchor="middle" font-family="Georgia, serif" font-size="24" fill="#b59a4a">${stars}</text>
+  <!-- Attribution -->
+  <text x="400" y="${isRated ? 426 : 402}" text-anchor="middle" font-family="Georgia, serif" font-size="14" fill="#544d3d">${attribution}</text>
 
-  <!-- Rated by -->
-  <text x="400" y="400" text-anchor="middle" font-family="Georgia, serif" font-size="16" fill="#444">as rated by <tspan font-weight="bold">${safeRecruiterName}</tspan></text>
+  <!-- Footer -->
+  <text x="170" y="498" text-anchor="middle" font-family="Georgia, serif" font-size="14" fill="#4a4535">${dateStr}</text>
+  <line x1="92" y1="508" x2="248" y2="508" stroke="#d9c583" stroke-width="1"/>
+  <text x="170" y="524" text-anchor="middle" font-family="Georgia, serif" font-size="10" letter-spacing="2" fill="#a89e86">DATE OF ISSUE</text>
 
-  <!-- Footer: Date -->
-  <text x="160" y="480" text-anchor="middle" font-family="Georgia, serif" font-size="14" fill="#666">${dateStr}</text>
-  <line x1="80" y1="490" x2="240" y2="490" stroke="#c9a84c" stroke-width="1"/>
-  <text x="160" y="508" text-anchor="middle" font-family="Georgia, serif" font-size="12" fill="#aaa" letter-spacing="2">DATE OF ISSUE</text>
+  <circle cx="400" cy="500" r="26" fill="none" stroke="#c8a94e" stroke-width="2.5"/>
+  <text x="400" y="509" text-anchor="middle" font-family="Georgia, serif" font-size="24" fill="#c8a94e">✦</text>
 
-  <!-- Footer: Seal -->
-  <circle cx="400" cy="484" r="30" fill="none" stroke="#b59a4a" stroke-width="3"/>
-  <text x="400" y="492" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#b59a4a">✦</text>
-
-  <!-- Footer: Authorized -->
-  <text x="640" y="480" text-anchor="middle" font-family="Georgia, serif" font-size="14" fill="#666">Part Find</text>
-  <line x1="560" y1="490" x2="720" y2="490" stroke="#c9a84c" stroke-width="1"/>
-  <text x="640" y="508" text-anchor="middle" font-family="Georgia, serif" font-size="12" fill="#aaa" letter-spacing="2">AUTHORIZED BY</text>
+  <text x="630" y="498" text-anchor="middle" font-family="Georgia, serif" font-size="14" fill="#4a4535">Part Find</text>
+  <line x1="552" y1="508" x2="708" y2="508" stroke="#d9c583" stroke-width="1"/>
+  <text x="630" y="524" text-anchor="middle" font-family="Georgia, serif" font-size="10" letter-spacing="2" fill="#a89e86">AUTHORIZED BY</text>
 </svg>`;
 }
 
 /**
- * Renders the certificate SVG to a PNG buffer using sharp.
- * Returns a high-quality 1600×1120 PNG (2× for retina clarity).
+ * Renders the certificate SVG to a high-quality PNG buffer (1600×1120, 2×).
  */
 export async function renderCertificateImage(
     userName: string,
