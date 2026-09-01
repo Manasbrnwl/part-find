@@ -17,6 +17,11 @@ model User {
   jwt_token     String?
   otp           String?
   otp_exp       DateTime?
+  // Pending self-service change (email / phone / role) awaiting OTP confirmation.
+  // Kept separate from the login otp fields so a pending change can't clash with login.
+  change_otp     String?
+  change_otp_exp DateTime?
+  pending_change Json?
   weight        Float?
   gender        String?
   address       String?

@@ -14,6 +14,7 @@ import {
   getMyAadhaarImage,
   getAadhaarImageByAdmin,
 } from "../controller/userController";
+import { requestAccountChange, verifyAccountChange } from "../controller/accountChangeController";
 import multer from "multer";
 import sharp from "sharp";
 import { storeImage } from "../lib/storage";
@@ -104,6 +105,10 @@ router
 
 // Profile completion percentage
 router.get("/profile/completion", getProfileCompletion);
+
+// Self-service email / phone / role change — applied ONLY after OTP verification.
+router.post("/account/change/request", authorize(["USER", "RECRUITER"]), requestAccountChange);
+router.post("/account/change/verify", authorize(["USER", "RECRUITER"]), verifyAccountChange);
 
 // Aadhaar (KYC) — any authenticated role.
 // PUT submits/updates the number + image; the image is stored in a private dir

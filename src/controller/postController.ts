@@ -18,9 +18,29 @@ import {
   queueCompletionCertificate,
 } from "../queues/notificationQueue";
 import { logger } from "../../utils/logger";
+import { newPostAdminNotificationTemplate } from "../../utils/notification/emailTemplates";
+const { sendEmailNotification } = require("../../utils/notification/email.notification");
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+/**
+ * Email the Part Find team (official@part-find.org, override via ADMIN_NOTIFY_EMAIL)
+ * when a recruiter creates a post that needs approval. Fire-and-forget.
+ */
+export async function notifyAdminNewPost(
+  post: any,
+  creator: {
+    name?: string | null;
+    email?: string | null;
+    phone_number?: string | null;
+    recruiter_company_name?: string | null;
+  } | null
+) {
+  const to = process.env.ADMIN_NOTIFY_EMAIL || "official@part-find.org";
+  const tpl = newPostAdminNotificationTemplate(post, creator || {});
+  await sendEmailNotification(to, tpl.subject, tpl.text, tpl.html);
+}
 
 /**
  * Broadcast a "new job posted" FCM push to all active USER accounts (except the
@@ -141,7 +161,13 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
   // auto-approved (no point in an admin approving their own post).
   const creator = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true },
+    select: {
+      role: true,
+      name: true,
+      email: true,
+      phone_number: true,
+      recruiter_company_name: true,
+    },
   });
   const autoApprove = creator?.role === "ADMIN";
 
@@ -194,6 +220,12 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
   if (autoApprove) {
     broadcastNewJob(post).catch((err) =>
       logger.error("Failed to queue new job notification", { error: err })
+    );
+  } else {
+    // Recruiter post pending approval — notify the Part Find team by email so
+    // they can review + publish it. Fire-and-forget so it never blocks creation.
+    notifyAdminNewPost(post, creator).catch((err) =>
+      logger.error("Failed to email admin about new post", { error: err })
     );
   }
 
@@ -808,6 +840,9 @@ export const getAppliedPosts = asyncHandler(
         },
         where: {
           userId: req.userId,
+          // Hide applications whose post was deleted by the recruiter
+          // (deletePost sets is_active=false) — it should disappear for applicants.
+          post: { is: { is_active: true } },
         },
         orderBy: {
           post: {
@@ -820,6 +855,7 @@ export const getAppliedPosts = asyncHandler(
       prisma.postApplied.count({
         where: {
           userId: req.userId,
+          post: { is: { is_active: true } },
         },
       }),
     ]);

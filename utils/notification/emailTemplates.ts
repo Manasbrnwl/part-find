@@ -359,3 +359,88 @@ export function completionCertificateTemplate(userName: string, postTitle: strin
 
     return { subject, text, html };
 }
+
+/**
+ * Internal notification to the Part Find team (official@part-find.org) when a
+ * recruiter creates a new post that is awaiting admin approval.
+ */
+export function newPostAdminNotificationTemplate(
+    post: {
+        title: string;
+        content?: string | null;
+        requirement?: string | null;
+        role?: string | null;
+        location?: string | null;
+        company_name?: string | null;
+        total?: number | null;
+        payment?: number | null;
+        paymentBoys?: number | null;
+        paymentGirls?: number | null;
+        startDate?: Date | null;
+        endDate?: Date | null;
+    },
+    creator: {
+        name?: string | null;
+        email?: string | null;
+        phone_number?: string | null;
+        recruiter_company_name?: string | null;
+    }
+): { subject: string; text: string; html: string } {
+    const company = esc(creator.recruiter_company_name || post.company_name || "an organisation");
+    const person = esc(creator.name || "A recruiter");
+    const title = esc(post.title || "Untitled post");
+    const fmtDate = (d?: Date | null) =>
+        d ? new Date(d).toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "numeric" }) : "—";
+
+    const subject = `New post pending approval: "${post.title}" — ${creator.recruiter_company_name || post.company_name || person}`;
+
+    const text =
+        `New post created by ${creator.name || "a recruiter"} (${company}) and awaiting admin approval.\n\n` +
+        `Title: ${post.title}\n` +
+        `Role: ${post.role || "—"}\n` +
+        `Location: ${post.location || "—"}\n` +
+        `Vacancies: ${post.total ?? "—"}\n` +
+        `Dates: ${fmtDate(post.startDate)} to ${fmtDate(post.endDate)}\n` +
+        `Requirements: ${post.requirement || "—"}\n` +
+        `Description: ${post.content || "—"}\n\n` +
+        `Created by: ${creator.name || "—"} | ${creator.email || "—"} | ${creator.phone_number || "—"}\n` +
+        `Approve it from the admin panel to make it live.`;
+
+    const row = (label: string, value: string) =>
+        `<tr>
+            <td style="padding:6px 12px 6px 0;color:${MUTED};font-size:13px;white-space:nowrap;vertical-align:top;">${label}</td>
+            <td style="padding:6px 0;color:${INK};font-size:14px;font-weight:600;">${value || "—"}</td>
+        </tr>`;
+
+    const html = baseLayout(`
+        ${heading("New post awaiting approval", TEAL_DARK)}
+        <p style="margin:0 0 18px;color:${INK};font-size:15px;line-height:1.6;text-align:center;">
+            <strong>${person}</strong> from <strong>${company}</strong> just created a new post. It is
+            <strong>pending approval</strong> and won't be visible to users until an admin publishes it.
+        </p>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:${TEAL_TINT};border-radius:10px;padding:6px 18px;margin:0 0 18px;">
+            <tr><td style="padding:14px 6px 4px;color:${TEAL_DARK};font-size:17px;font-weight:700;">${title}</td></tr>
+            <tr><td style="padding:0 6px 12px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                    ${row("Role", esc(post.role || "—"))}
+                    ${row("Location", esc(post.location || "—"))}
+                    ${row("Vacancies", String(post.total ?? "—"))}
+                    ${row("Dates", `${fmtDate(post.startDate)} &rarr; ${fmtDate(post.endDate)}`)}
+                    ${row("Payment", post.payment ? `&#8377;${post.payment}` : (post.paymentBoys || post.paymentGirls ? `Boys &#8377;${post.paymentBoys || "—"} / Girls &#8377;${post.paymentGirls || "—"}` : "—"))}
+                    ${row("Requirements", esc(post.requirement || "—"))}
+                    ${row("Description", esc((post.content || "—").slice(0, 400)))}
+                </table>
+            </td></tr>
+        </table>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-top:1px solid #eee;padding-top:8px;">
+            ${row("Created by", esc(creator.name || "—"))}
+            ${row("Email", esc(creator.email || "—"))}
+            ${row("Phone", esc(creator.phone_number || "—"))}
+        </table>
+        <p style="margin:18px 0 0;color:${MUTED};font-size:13px;line-height:1.6;text-align:center;">
+            Review and publish it from the admin panel to make it live for users.
+        </p>
+    `, `${person} from ${company} created a new post pending approval`);
+
+    return { subject, text, html };
+}

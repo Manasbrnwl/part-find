@@ -3,6 +3,7 @@ import { authenticate, authorize } from "../middleware/authMiddleware";
 import {
   getAllUsers,
   toggleUserStatus,
+  adminUpdateUser,
   switchUserRole,
   getAllPosts,
   togglePostStatus,
@@ -47,6 +48,7 @@ router.use(authenticate, authorize(["ADMIN"]));
 router.get("/users", getAllUsers);
 router.patch("/users/:id/toggle", toggleUserStatus);
 router.patch("/users/:id/role", switchUserRole);
+router.patch("/users/:id", adminUpdateUser);
 router.post("/users/:id/notify", sendUserNotification);
 
 router.get("/posts", getAllPosts);

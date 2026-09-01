@@ -94,6 +94,128 @@ export const toggleUserStatus = asyncHandler(async (req: Request, res: Response)
 });
 
 /**
+ * PATCH /admin/users/:id  (Admin)
+ * Full-authority edit of any user's details. Accepts any subset of the editable
+ * fields below; email/phone/role are validated (uniqueness + allowed values).
+ * Sensitive fields (otp, tokens, aadhaar, timestamps) are never writable here.
+ */
+export const adminUpdateUser = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const b = req.body || {};
+
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) {
+    throw handleNotFoundError("User");
+  }
+
+  const data: any = {};
+
+  // Email (unique)
+  if (b.email !== undefined && b.email !== null && String(b.email).trim() !== "") {
+    const email = String(b.email).trim().toLowerCase();
+    if (email !== user.email) {
+      const clash = await prisma.user.findUnique({ where: { email } });
+      if (clash && clash.id !== id) {
+        throw handleValidationError("This email is already in use by another account");
+      }
+      data.email = email;
+    }
+  }
+
+  // Phone (unique, nullable)
+  if (b.phone_number !== undefined) {
+    const phone = b.phone_number ? String(b.phone_number).trim() : null;
+    if (phone && phone !== user.phone_number) {
+      const clash = await prisma.user.findUnique({ where: { phone_number: phone } });
+      if (clash && clash.id !== id) {
+        throw handleValidationError("This phone number is already in use by another account");
+      }
+    }
+    data.phone_number = phone;
+  }
+
+  // Role
+  if (b.role !== undefined) {
+    if (!["USER", "RECRUITER", "ADMIN", "SERVICE_SEEKER"].includes(b.role)) {
+      throw handleValidationError("Invalid role");
+    }
+    if (b.role !== user.role && user.id === req.userId) {
+      throw handleValidationError("You cannot change your own role");
+    }
+    data.role = b.role;
+  }
+
+  // is_active (guard self-deactivation)
+  if (b.is_active !== undefined) {
+    if (user.id === req.userId && b.is_active === false) {
+      throw handleValidationError("You cannot deactivate your own account");
+    }
+    data.is_active = Boolean(b.is_active);
+  }
+
+  // Plain string fields
+  const stringFields = [
+    "name", "gender", "address", "state", "country", "english_level",
+    "intro_video_link", "recruiter_company_name", "recruiter_type",
+    "recruiter_company_registration", "recruiter_company_address",
+  ];
+  for (const f of stringFields) {
+    if (b[f] !== undefined) data[f] = b[f] === "" ? null : b[f];
+  }
+
+  // Typed fields
+  if (b.date_of_birth !== undefined) {
+    data.date_of_birth = b.date_of_birth ? new Date(b.date_of_birth) : null;
+  }
+  if (b.height !== undefined) {
+    data.height = b.height === "" || b.height === null ? null : parseFloat(b.height);
+  }
+  if (b.weight !== undefined) {
+    data.weight = b.weight === "" || b.weight === null ? null : parseFloat(b.weight);
+  }
+
+  // Array / JSON fields
+  if (b.skills !== undefined) {
+    data.skills = Array.isArray(b.skills)
+      ? b.skills
+      : String(b.skills).split(",").map((s: string) => s.trim()).filter(Boolean);
+  }
+  if (b.experience !== undefined) {
+    data.experience = Array.isArray(b.experience)
+      ? b.experience
+      : String(b.experience).split(",").map((s: string) => s.trim()).filter(Boolean);
+  }
+  if (b.education !== undefined) {
+    data.education = b.education; // JSON — accepted as provided
+  }
+
+  if (Object.keys(data).length === 0) {
+    throw handleValidationError("No editable fields provided");
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: { id },
+    data,
+    select: {
+      id: true, email: true, name: true, phone_number: true, role: true,
+      is_active: true, gender: true, date_of_birth: true, address: true,
+      state: true, country: true, height: true, weight: true, english_level: true,
+      experience: true, education: true, skills: true, intro_video_link: true,
+      recruiter_company_name: true, recruiter_type: true,
+      recruiter_company_registration: true, recruiter_company_address: true,
+    },
+  });
+
+  logger.info(`Admin edited user ${id} — fields: ${Object.keys(data).join(", ")}`);
+
+  res.status(200).json({
+    success: true,
+    message: "User updated successfully",
+    data: updatedUser,
+  });
+});
+
+/**
  * Get all job posts. Optional ?status=PENDING|APPROVED|REJECTED filter — handy
  * for the moderation queue (?status=PENDING).
  */
@@ -448,7 +570,9 @@ export const sendUserNotification = asyncHandler(async (req: Request, res: Respo
   }
 
   if (!user.fcm_token) {
-    throw handleValidationError("User does not have an FCM token registered");
+    throw handleValidationError(
+      `${user.name || "This user"} has no device registered for push notifications (they haven't opened the app, or logged out).`
+    );
   }
 
   const result = await sendFCMNotification(user.fcm_token, {
@@ -459,15 +583,30 @@ export const sendUserNotification = asyncHandler(async (req: Request, res: Respo
   });
 
   if (!result.success) {
-    return res.status(500).json({
+    const err = result.error || "";
+    // A stale/invalid token can never be delivered to — clear it so the admin
+    // list reflects reality and future sends don't keep failing on a dead token.
+    const staleToken = /not registered|expired|invalid.*token|registration-token|invalid-argument/i.test(err);
+    if (staleToken) {
+      await prisma.user.update({ where: { id }, data: { fcm_token: null } }).catch(() => {});
+      return res.status(409).json({
+        success: false,
+        message: `${user.name || "This user"}'s device is no longer reachable (they logged out or reinstalled the app). Their stale token has been cleared — push will work again once they reopen the app.`,
+      });
+    }
+    // Otherwise it's a delivery/config problem (e.g. push not configured on this
+    // environment). Surface the real reason so it's actionable.
+    logger.error(`Admin push to user ${id} failed`, { error: err });
+    return res.status(502).json({
       success: false,
-      message: `Failed to send FCM notification: ${result.error || "The token might be invalid or expired."}`,
+      message: `Couldn't send the notification: ${err || "push service error"}. Please try again.`,
     });
   }
 
+  logger.info(`Admin push sent to user ${id}`);
   res.status(200).json({
     success: true,
-    message: "FCM notification sent successfully to user",
+    message: `Notification sent to ${user.name || "the user"}.`,
   });
 });
 
