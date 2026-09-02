@@ -2,7 +2,7 @@ import { Worker, Job } from "bullmq";
 import { redisConnection } from "./config";
 import { logger } from "../../utils/logger";
 const { sendEmailNotification, transporter } = require("../../utils/notification/email.notification");
-import { lowRatingWarningTemplate, absentWarningTemplate, completionCertificateTemplate, generateCertificateHtml, otpEmailTemplate, inactiveReminderTemplate } from "../../utils/notification/emailTemplates";
+import { lowRatingWarningTemplate, absentWarningTemplate, completionCertificateTemplate, generateCertificateHtml, otpEmailTemplate } from "../../utils/notification/emailTemplates";
 import { logoAttachment } from "../../utils/notification/logoAsset";
 import { sendFCMNotification, sendFCMToMultipleTokens } from "../../utils/firebase";
 import {
@@ -252,10 +252,9 @@ async function processCompletionCertificate(data: CompletionCertificateData) {
  * until they return (which advances last_active_at) and go idle once more.
  */
 async function processInactiveScan() {
-    // Disabled by default. This can mass-send and overwhelm the SMTP provider
-    // (GoDaddy Workspace has a low daily limit) — only run when explicitly
-    // enabled AND capped per run. Re-enable only with a provider that can take
-    // the volume (e.g. SES/SendGrid) and appropriate throttling.
+    // Off by default — gated behind INACTIVE_REMINDER_ENABLED and capped per run.
+    // Reminders go out via PUSH (Firebase), so there's no SMTP/mailbox limit to
+    // worry about; the cap just keeps each run bounded.
     if (process.env.INACTIVE_REMINDER_ENABLED !== "true") {
         logger.info("Inactive scan skipped (INACTIVE_REMINDER_ENABLED != 'true')");
         return;
@@ -269,6 +268,7 @@ async function processInactiveScan() {
             is_active: true,
             role: { in: ["USER", "RECRUITER"] },
             last_active_at: { not: null, lt: cutoff },
+            fcm_token: { not: null }, // push-only: skip users we can't reach by push
         },
         select: {
             id: true,
@@ -303,20 +303,13 @@ async function processInactiveScan() {
 }
 
 /**
- * Send a re-engagement reminder to one inactive user (email + push), then
+ * Send a re-engagement reminder to one inactive user via PUSH notification, then
  * stamp last_reminded_at so they aren't reminded again this streak.
+ * (Push only — no email — so it doesn't depend on the SMTP mailbox.)
  */
 async function processInactiveReminder(data: InactiveReminderData) {
     let delivered = false;
 
-    // Email
-    if (data.userEmail) {
-        const { subject, text, html } = inactiveReminderTemplate(data.userName, data.role);
-        const ok = await sendEmailNotification(data.userEmail, subject, text, html);
-        delivered = delivered || ok === true;
-    }
-
-    // Push
     if (data.fcmToken) {
         const isRecruiter = String(data.role).toUpperCase() === "RECRUITER";
         const pushOk = await sendFCMNotification(data.fcmToken, {
@@ -330,11 +323,13 @@ async function processInactiveReminder(data: InactiveReminderData) {
             logger.warn(`Inactive push failed for ${data.userId}: ${err?.message}`);
             return false;
         });
-        delivered = delivered || pushOk === true;
+        delivered = pushOk === true;
+    } else {
+        logger.warn(`Inactive reminder skipped for ${data.userId} — no FCM token`);
     }
 
-    // Only mark as reminded if something actually went out — otherwise a broken
-    // channel would silently "remind" everyone without delivering anything.
+    // Only mark as reminded if the push actually went out — otherwise a user we
+    // couldn't reach would be silently marked and never nudged.
     if (delivered) {
         await prisma.user.update({
             where: { id: data.userId },
