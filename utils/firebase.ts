@@ -175,6 +175,10 @@ const sendFCMToMultipleTokens = async (
     return { successCount: 0, failureCount: 0 };
   }
 
+  // Dedupe: a single device token must only be messaged once per broadcast, even
+  // if the caller's list happens to contain it more than once.
+  fcmTokens = Array.from(new Set(fcmTokens.filter(Boolean)));
+
   const firebaseAdmin = getFirebaseAdmin();
   let totalSuccess = 0;
   let totalFailure = 0;

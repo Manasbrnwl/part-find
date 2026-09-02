@@ -16,6 +16,7 @@ import {
   isOTPExpired,
 } from "../../utils/otp/functions.otp";
 import { maskAadhaar } from "../utils/aadhaar";
+import { releaseFcmTokenFromOthers } from "../utils/fcm";
 import { applyReferralCodeToUser } from "./referralController";
 import {
   handleControllerError,
@@ -239,6 +240,10 @@ export const verifyOTP = asyncHandler(async (req: Request, res: Response) => {
   const accessToken = generateAccessToken(user.id, user.email);
   const refreshToken = await createAndSaveRefreshToken(user.id);
 
+  // A device token belongs to exactly one account — detach it from any other
+  // user before claiming it here (prevents duplicate broadcast notifications).
+  await releaseFcmTokenFromOthers(prisma, user.id, fcmToken);
+
   // Update user data
   const updateData: any = {
     otp: null, // Clear OTP after successful verification
@@ -394,6 +399,9 @@ export const loginGoogleUser = asyncHandler(
       // Generate tokens
       const accessToken = generateAccessToken(user.id, user.email);
       const refreshToken = await createAndSaveRefreshToken(user.id);
+
+      // Detach this device token from any other account before claiming it.
+      await releaseFcmTokenFromOthers(prisma, user.id, fcmToken);
 
       // Update FCM token
       user = await prisma.user.update({

@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { Request, Response } from "express";
+import { releaseFcmTokenFromOthers } from "../utils/fcm";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
@@ -648,6 +649,10 @@ export const updateFcmToken = asyncHandler(async (req: Request, res: Response) =
   if (!user) {
     throw handleNotFoundError("User");
   }
+
+  // This device token can only belong to one account — detach it from any other
+  // user first so broadcasts don't hit this device multiple times.
+  await releaseFcmTokenFromOthers(prisma, userId, fcmToken);
 
   await prisma.user.update({
     where: { id: userId },
