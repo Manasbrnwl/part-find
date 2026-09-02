@@ -177,7 +177,12 @@ async function processAbsentWarning(data: AbsentWarningData) {
  */
 async function processOtpEmail(data: OtpEmailData) {
     const { subject, text, html } = otpEmailTemplate(data.otp, data.expiryMinutes);
-    await sendEmailNotification(data.email, subject, text, html);
+    const ok = await sendEmailNotification(data.email, subject, text, html);
+    if (!ok) {
+        // Throw so BullMQ marks the job failed and retries — and so the logs
+        // don't falsely claim the OTP was sent when SMTP actually rejected it.
+        throw new Error(`OTP email to ${data.email} failed on all mail accounts`);
+    }
     logger.info(`OTP email sent to ${data.email}`);
 }
 
