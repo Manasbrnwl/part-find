@@ -332,13 +332,16 @@ const SUPPORTED_SIGN_IN_PROVIDERS = ["google.com", "apple.com"];
 export const loginGoogleUser = asyncHandler(
   async (req: Request, res: Response) => {
     try {
-      const { fcmToken, idToken } = req.body;
+      const { fcmToken, idToken, role } = req.body;
       if (!idToken || !fcmToken) {
         return res.status(400).json({
           success: false,
           message: "ID token and FCM token are required",
         });
       }
+      // Signup role from the payload (USER/RECRUITER/SERVICE_SEEKER); ignore anything else.
+      const requestedRole =
+        ["USER", "RECRUITER", "SERVICE_SEEKER"].includes(role) ? role : null;
       const admin = getFirebaseAdmin();
       let decodedToken;
       try {
@@ -388,12 +391,26 @@ export const loginGoogleUser = asyncHandler(
         where: { email },
       });
       if (!user) {
+        // First-time sign-in — create with the role the user selected.
         user = await prisma.user.create({
           data: {
             id: uid,
             name,
             email,
+            role: (requestedRole || "USER") as any,
           },
+        });
+      } else if (
+        requestedRole &&
+        requestedRole !== user.role &&
+        (isBusinessRole(user.role) ? checkIsNewRecruiter(user) : checkIsNewUser(user))
+      ) {
+        // Account exists but onboarding isn't complete yet — honor the role the
+        // user is (re)selecting, so an account mistakenly recorded as USER can
+        // still become a RECRUITER. Fully-onboarded accounts keep their role.
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { role: requestedRole as any },
         });
       }
       // Generate tokens
