@@ -443,6 +443,13 @@ export const loginGoogleUser = asyncHandler(
         },
       });
     } catch (error: any) {
+      // Log the real reason — this catch previously swallowed it, making every
+      // failure look like an opaque "Server error".
+      logger.error("firebase-signin failed (unhandled)", {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack,
+      });
       res.status(500).json({
         success: false,
         message: "Server error",
