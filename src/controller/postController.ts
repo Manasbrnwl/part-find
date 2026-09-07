@@ -1599,3 +1599,76 @@ export const unsavePost = asyncHandler(async (req: Request, res: Response) => {
     message: "Post unsaved successfully",
   });
 });
+
+/**
+ * Report a post with a reason (spam, scam, inappropriate, etc.).
+ * A user may report a given post only once. Reports are stored as PENDING
+ * for admin review.
+ * Body: { reason: string (required), details?: string }
+ */
+export const reportPost = asyncHandler(async (req: Request, res: Response) => {
+  const postId = req.params.postId as string;
+  const reporterId = req.userId as string;
+  const { reason, details } = req.body;
+
+  if (!postId) throw handleValidationError("Post ID is required");
+  if (!reporterId) throw handleValidationError("User ID is required");
+
+  const trimmedReason = typeof reason === "string" ? reason.trim() : "";
+  if (trimmedReason.length < 3) {
+    throw handleValidationError("A valid reason is required (at least 3 characters)");
+  }
+  if (trimmedReason.length > 500) {
+    throw handleValidationError("Reason must be 500 characters or fewer");
+  }
+  const trimmedDetails =
+    typeof details === "string" && details.trim() ? details.trim().slice(0, 1000) : null;
+
+  // The post must exist
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+    select: { id: true, userId: true },
+  });
+  if (!post) throw handleNotFoundError("Post");
+
+  // You can't report your own post
+  if (post.userId === reporterId) {
+    throw handleValidationError("You cannot report your own post");
+  }
+
+  // One report per user per post
+  const existing = await prisma.postReport.findFirst({
+    where: { postId, reporterId },
+    select: { id: true },
+  });
+  if (existing) {
+    throw handleValidationError("You have already reported this post");
+  }
+
+  let report;
+  try {
+    report = await prisma.postReport.create({
+      data: { postId, reporterId, reason: trimmedReason, details: trimmedDetails },
+    });
+  } catch (err: any) {
+    // Unique-constraint race (reported twice near-simultaneously)
+    if (err?.code === "P2002") {
+      throw handleValidationError("You have already reported this post");
+    }
+    throw err;
+  }
+
+  logger.info(`Post ${postId} reported by user ${reporterId} (reason: ${trimmedReason})`);
+
+  res.status(201).json({
+    success: true,
+    message: "Post reported successfully. Our team will review it.",
+    data: {
+      id: report.id,
+      postId: report.postId,
+      reason: report.reason,
+      status: report.status,
+      createdAt: report.createdAt,
+    },
+  });
+});

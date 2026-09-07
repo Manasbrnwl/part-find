@@ -71,6 +71,7 @@ model User {
   experience          String[]            @default([])
   education           Json                @default("[]")
   flaggedReports      FlaggedUser[]
+  postReports         PostReport[]        @relation("UserPostReports")
   certificates        Certificate[]       @relation("UserCertificates")
   issuedCertificates  Certificate[]       @relation("RecruiterCertificates")
 }
@@ -173,6 +174,7 @@ model Post {
   ratings        Rating[]
   recruiterRatings RecruiterRating[]
   certificates   Certificate[]
+  reports        PostReport[]
 
   @@unique([userId, title, startDate], map: "post_unique")
 }
@@ -330,6 +332,28 @@ model FlaggedUser {
   reason    String
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  DISMISSED
+}
+
+// A user-submitted report against a post (e.g. spam, scam, inappropriate).
+model PostReport {
+  id         String       @id @default(uuid())
+  postId     String
+  reporterId String
+  reason     String
+  details    String?
+  status     ReportStatus @default(PENDING)
+  createdAt  DateTime     @default(now())
+  post       Post         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reporter   User         @relation("UserPostReports", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  // One report per user per post
+  @@unique([postId, reporterId])
 }
 
 model Certificate {

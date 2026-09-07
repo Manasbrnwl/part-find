@@ -12,6 +12,7 @@ import {
   recruiterGetPost,
   savePost,
   unsavePost,
+  reportPost,
   getSavePosts,
   getNearbyPosts,
   cancelApplication,
@@ -46,6 +47,7 @@ router.post("/save/:postId", authorize(["USER"]), savePost);
 router.post("/unsave/:postId", authorize(["USER"]), unsavePost);
 router.get("/save/get-all", authorize(["USER"]), getSavePosts);
 router.post("/cancel-application/:postId", authorize(["USER"]), cancelApplication);
+router.post("/report/:postId", authorize(["USER", "RECRUITER"]), reportPost);
 
 export default router;
 
