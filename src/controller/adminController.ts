@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient, PostApprovalStatus } from "@prisma/client";
+import { PrismaClient, PostApprovalStatus, ReportStatus } from "@prisma/client";
 import { asyncHandler, handleNotFoundError, handleValidationError } from "../utils/errorHandler";
 import { logger } from "../../utils/logger";
 import { sendFCMNotification } from "../../utils/firebase";
@@ -674,6 +674,91 @@ export const switchUserRole = asyncHandler(async (req: Request, res: Response) =
     success: true,
     message: `User role changed to ${updatedUser.role} successfully`,
     data: updatedUser,
+  });
+});
+
+/**
+ * List post reports for admin review. Optional ?status filter
+ * (PENDING | REVIEWED | DISMISSED) and ?page / ?limit pagination.
+ * Includes the reported post (+ its owner) and the reporter, plus a
+ * per-status count summary for dashboard badges.
+ */
+export const getPostReports = asyncHandler(async (req: Request, res: Response) => {
+  const status = req.query.status as string | undefined;
+  const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+  const limit = Math.min(100, Math.max(1, parseInt((req.query.limit as string) || "50", 10)));
+
+  const where: any = {};
+  if (status && status in ReportStatus) {
+    where.status = status as ReportStatus;
+  }
+
+  const [reports, total, statusCounts] = await Promise.all([
+    prisma.postReport.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+      include: {
+        post: {
+          select: {
+            id: true,
+            title: true,
+            is_active: true,
+            approval_status: true,
+            user: {
+              select: { id: true, name: true, email: true, recruiter_company_name: true },
+            },
+          },
+        },
+        reporter: { select: { id: true, name: true, email: true } },
+      },
+    }),
+    prisma.postReport.count({ where }),
+    prisma.postReport.groupBy({ by: ["status"], _count: { _all: true } }),
+  ]);
+
+  const counts = statusCounts.reduce((acc: Record<string, number>, c) => {
+    acc[c.status] = c._count._all;
+    return acc;
+  }, {});
+
+  res.status(200).json({
+    success: true,
+    data: reports,
+    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    counts,
+  });
+});
+
+/**
+ * Update the review status of a post report.
+ * Body: { status: "PENDING" | "REVIEWED" | "DISMISSED" }
+ */
+export const updatePostReportStatus = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const { status } = req.body;
+
+  if (!status || !(status in ReportStatus)) {
+    throw handleValidationError('status must be one of "PENDING", "REVIEWED", or "DISMISSED"');
+  }
+
+  const existing = await prisma.postReport.findUnique({ where: { id } });
+  if (!existing) {
+    throw handleNotFoundError("Report");
+  }
+
+  const updated = await prisma.postReport.update({
+    where: { id },
+    data: { status: status as ReportStatus },
+  });
+
+  logger.info(`Admin set report ${id} status to ${status}`);
+
+  res.status(200).json({
+    success: true,
+    message: `Report marked ${status}`,
+    data: updated,
   });
 });
 

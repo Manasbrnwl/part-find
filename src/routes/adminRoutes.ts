@@ -13,6 +13,8 @@ import {
   deleteApplication,
   updateApplicationStatus,
   sendUserNotification,
+  getPostReports,
+  updatePostReportStatus,
 } from "../controller/adminController";
 import {
   createPostType,
@@ -59,6 +61,10 @@ router.patch("/posts/:id/approval", updatePostApproval);
 router.get("/applications", getAllApplications);
 router.delete("/applications/:id", deleteApplication);
 router.patch("/applications/:id/status", updateApplicationStatus);
+
+// Post reports (user-submitted) review
+router.get("/reports", getPostReports);
+router.patch("/reports/:id", updatePostReportStatus);
 
 // Post/employment type administration
 router.post("/post-types", createPostType);
