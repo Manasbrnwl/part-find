@@ -4,6 +4,7 @@ import { asyncHandler, handleNotFoundError, handleValidationError } from "../uti
 import { logger } from "../../utils/logger";
 import { sendFCMNotification } from "../../utils/firebase";
 import { broadcastNewJob } from "./postController";
+import { queuePostApproved } from "../queues/notificationQueue";
 
 const prisma = new PrismaClient();
 
@@ -319,6 +320,24 @@ export const updatePostApproval = asyncHandler(async (req: Request, res: Respons
     broadcastNewJob(updatedPost).catch((err) =>
       logger.error("Failed to broadcast approved job", { error: err })
     );
+
+    // Notify the recruiter (post owner) that their post is now live — push + email.
+    const owner = await prisma.user.findUnique({
+      where: { id: updatedPost.userId },
+      select: { name: true, email: true, fcm_token: true, recruiter_company_name: true },
+    });
+    if (owner) {
+      queuePostApproved({
+        recruiterId: updatedPost.userId,
+        recruiterName: owner.recruiter_company_name || owner.name || null,
+        recruiterEmail: owner.email || null,
+        postId: updatedPost.id,
+        postTitle: updatedPost.title,
+        fcmToken: owner.fcm_token || null,
+      }).catch((err) =>
+        logger.error("Failed to queue post-approved notification", { error: err })
+      );
+    }
   }
 
   logger.info(`Admin set post ${id} approval to ${status}`);

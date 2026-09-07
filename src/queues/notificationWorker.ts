@@ -2,7 +2,7 @@ import { Worker, Job } from "bullmq";
 import { redisConnection } from "./config";
 import { logger } from "../../utils/logger";
 const { sendEmailNotification, transporter } = require("../../utils/notification/email.notification");
-import { lowRatingWarningTemplate, absentWarningTemplate, completionCertificateTemplate, generateCertificateHtml, otpEmailTemplate } from "../../utils/notification/emailTemplates";
+import { lowRatingWarningTemplate, absentWarningTemplate, completionCertificateTemplate, generateCertificateHtml, otpEmailTemplate, postApprovedTemplate } from "../../utils/notification/emailTemplates";
 import { logoAttachment } from "../../utils/notification/logoAsset";
 import { sendFCMNotification, sendFCMToMultipleTokens } from "../../utils/firebase";
 import {
@@ -10,6 +10,7 @@ import {
     JobReminderData,
     RatingNotificationData,
     NewJobPostedData,
+    PostApprovedData,
     NewApplicationData,
     ApplicationStatusData,
     LowRatingWarningData,
@@ -103,6 +104,30 @@ async function processNewApplication(data: NewApplicationData) {
     });
 
     logger.info(`Application notification sent to recruiter for post ${data.postId}`);
+}
+
+/**
+ * Process post-approved notification — sent to the recruiter (post owner) when
+ * an admin approves their job post. Delivers a push notification and an email.
+ */
+async function processPostApproved(data: PostApprovedData) {
+    // 1. Push notification
+    if (data.fcmToken) {
+        await sendFCMNotification(data.fcmToken, {
+            title: "✅ Your job post is live!",
+            body: `"${data.postTitle}" was approved and is now visible to candidates.`,
+            reminderId: data.postId,
+            type: NotificationType.POST_APPROVED,
+        }).catch((err) => logger.warn(`Post-approved push failed for ${data.recruiterId}: ${err?.message}`));
+        logger.info(`Post-approved FCM sent to recruiter ${data.recruiterId}`);
+    }
+
+    // 2. Email
+    if (data.recruiterEmail) {
+        const { subject, text, html } = postApprovedTemplate(data.recruiterName, data.postTitle);
+        await sendEmailNotification(data.recruiterEmail, subject, text, html);
+        logger.info(`Post-approved email sent to ${data.recruiterEmail}`);
+    }
 }
 
 /**
@@ -362,6 +387,10 @@ export function startNotificationWorker() {
 
                     case NotificationType.NEW_JOB_POSTED:
                         await processNewJobPosted(job.data as NewJobPostedData);
+                        break;
+
+                    case NotificationType.POST_APPROVED:
+                        await processPostApproved(job.data as PostApprovedData);
                         break;
 
                     case NotificationType.NEW_APPLICATION:

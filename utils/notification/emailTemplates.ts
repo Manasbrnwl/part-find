@@ -361,6 +361,45 @@ export function completionCertificateTemplate(userName: string, postTitle: strin
 }
 
 /**
+ * Sent to the recruiter (post owner) when an admin APPROVES their job post,
+ * i.e. it is now live and visible to candidates.
+ */
+export function postApprovedTemplate(recruiterName: string | null, postTitle: string): { subject: string; text: string; html: string } {
+    const name = recruiterName && recruiterName.trim() ? esc(recruiterName.trim()) : "there";
+    const title = esc(postTitle);
+    const appUrl = process.env.APP_URL || "https://part-find.org";
+
+    const subject = `Your job post "${postTitle}" is now live on ${BRAND_NAME}`;
+    const text = `Good news${recruiterName ? " " + recruiterName : ""}! Your job post "${postTitle}" has been approved and is now live on ${BRAND_NAME}. Candidates can see it and start applying.`;
+
+    const html = baseLayout(`
+        ${heading("Your job post is live! 🎉", TEAL_DARK)}
+        <p style="margin:0 0 16px;color:${INK};font-size:15px;line-height:1.6;">Hi ${name},</p>
+        <p style="margin:0 0 20px;color:${INK};font-size:15px;line-height:1.6;">
+            Good news — your job post has been reviewed and <strong>approved by our team</strong>. It is now live on ${BRAND_NAME} and visible to candidates, who can start applying right away.
+        </p>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 8px;">
+            <tr>
+                <td align="center" style="background-color:${TEAL_TINT};border-radius:10px;padding:20px 24px;">
+                    <div style="color:${MUTED};font-size:12px;text-transform:uppercase;letter-spacing:1px;">Approved &amp; live</div>
+                    <div style="color:${TEAL_DARK};font-size:17px;font-weight:700;line-height:1.4;margin-top:6px;">${title}</div>
+                </td>
+            </tr>
+        </table>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:20px 0 0;">
+            <tr><td align="center">
+                <a href="${esc(appUrl)}" style="display:inline-block;background-color:${TEAL};color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:13px 30px;border-radius:10px;">View your post</a>
+            </td></tr>
+        </table>
+        <p style="margin:22px 0 0;color:${MUTED};font-size:13px;line-height:1.6;text-align:center;">
+            You'll be notified as candidates apply. Good luck with your hiring!
+        </p>
+    `, `Your job post "${postTitle}" has been approved and is now live`);
+
+    return { subject, text, html };
+}
+
+/**
  * Internal notification to the Part Find team (official@part-find.org) when a
  * recruiter creates a new post that is awaiting admin approval.
  */

@@ -6,6 +6,7 @@ export enum NotificationType {
     JOB_REMINDER = "JOB_REMINDER",
     RATING_RECEIVED = "RATING_RECEIVED",
     NEW_JOB_POSTED = "NEW_JOB_POSTED",
+    POST_APPROVED = "POST_APPROVED",
     NEW_APPLICATION = "NEW_APPLICATION",
     APPLICATION_STATUS = "APPLICATION_STATUS",
     LOW_RATING_WARNING = "LOW_RATING_WARNING",
@@ -47,6 +48,15 @@ export interface NewJobPostedData {
     companyName: string;
     location: string;
     fcmTokens: string[];
+}
+
+export interface PostApprovedData {
+    recruiterId: string;
+    recruiterName: string | null;
+    recruiterEmail: string | null;
+    postId: string;
+    postTitle: string;
+    fcmToken?: string | null;
 }
 
 export interface NewApplicationData {
@@ -203,6 +213,21 @@ export async function queueNewJobNotification(data: NewJobPostedData) {
         }
     );
     logger.info(`New job notification queued for ${data.fcmTokens.length} users`);
+}
+
+/**
+ * Queue a notification to the recruiter (post owner) when an admin approves
+ * their job post — sends both a push notification and an email.
+ */
+export async function queuePostApproved(data: PostApprovedData) {
+    await getNotificationQueue().add(
+        NotificationType.POST_APPROVED,
+        data,
+        {
+            jobId: `post-approved-${data.postId}-${Date.now()}`,
+        }
+    );
+    logger.info(`Post-approved notification queued for recruiter ${data.recruiterId}`);
 }
 
 /**
