@@ -18,7 +18,7 @@ import {
   queueCompletionCertificate,
 } from "../queues/notificationQueue";
 import { logger } from "../../utils/logger";
-import { newPostAdminNotificationTemplate } from "../../utils/notification/emailTemplates";
+import { newPostAdminNotificationTemplate, postReportedAdminTemplate } from "../../utils/notification/emailTemplates";
 const { sendEmailNotification } = require("../../utils/notification/email.notification");
 
 const router = express.Router();
@@ -39,6 +39,23 @@ export async function notifyAdminNewPost(
 ) {
   const to = process.env.ADMIN_NOTIFY_EMAIL || "official@part-find.org";
   const tpl = newPostAdminNotificationTemplate(post, creator || {});
+  await sendEmailNotification(to, tpl.subject, tpl.text, tpl.html);
+}
+
+/**
+ * Email the Part Find team when a post crosses the report-alert threshold
+ * (default 2 reports). Fire-and-forget.
+ */
+export async function notifyAdminPostReported(args: {
+  postId: string;
+  postTitle: string;
+  ownerName?: string | null;
+  ownerEmail?: string | null;
+  reportCount: number;
+  reasons: string[];
+}) {
+  const to = process.env.ADMIN_NOTIFY_EMAIL || "official@part-find.org";
+  const tpl = postReportedAdminTemplate(args);
   await sendEmailNotification(to, tpl.subject, tpl.text, tpl.html);
 }
 
@@ -1627,7 +1644,7 @@ export const reportPost = asyncHandler(async (req: Request, res: Response) => {
   // The post must exist
   const post = await prisma.post.findUnique({
     where: { id: postId },
-    select: { id: true, userId: true },
+    select: { id: true, userId: true, title: true },
   });
   if (!post) throw handleNotFoundError("Post");
 
@@ -1659,6 +1676,28 @@ export const reportPost = asyncHandler(async (req: Request, res: Response) => {
   }
 
   logger.info(`Post ${postId} reported by user ${reporterId} (reason: ${trimmedReason})`);
+
+  // Auto-moderation: alert the team by email once a post crosses the report
+  // threshold (default 2). Fires once, exactly when the count reaches it.
+  const reportThreshold = parseInt(process.env.REPORT_ALERT_THRESHOLD || "2", 10);
+  const reportCount = await prisma.postReport.count({ where: { postId } });
+  if (reportCount === reportThreshold) {
+    const [reports, owner] = await Promise.all([
+      prisma.postReport.findMany({ where: { postId }, select: { reason: true }, orderBy: { createdAt: "asc" } }),
+      prisma.user.findUnique({
+        where: { id: post.userId },
+        select: { name: true, email: true, recruiter_company_name: true },
+      }),
+    ]);
+    notifyAdminPostReported({
+      postId,
+      postTitle: post.title,
+      ownerName: owner?.recruiter_company_name || owner?.name || null,
+      ownerEmail: owner?.email || null,
+      reportCount,
+      reasons: reports.map((r) => r.reason),
+    }).catch((err) => logger.error("Failed to send post-report admin alert", { error: err }));
+  }
 
   res.status(201).json({
     success: true,

@@ -400,6 +400,59 @@ export function postApprovedTemplate(recruiterName: string | null, postTitle: st
 }
 
 /**
+ * Internal alert to the Part Find team when a post crosses the report threshold
+ * (e.g. reported by 2+ users) and needs admin review.
+ */
+export function postReportedAdminTemplate(args: {
+    postId: string;
+    postTitle: string;
+    ownerName?: string | null;
+    ownerEmail?: string | null;
+    reportCount: number;
+    reasons: string[];
+}): { subject: string; text: string; html: string } {
+    const title = esc(args.postTitle);
+    const owner = esc(args.ownerName || "—");
+    const ownerEmail = esc(args.ownerEmail || "—");
+    const subject = `⚠️ Post reported ${args.reportCount}× — "${args.postTitle}" needs review`;
+
+    const reasonsText = args.reasons.map((r) => `• ${r}`).join("\n");
+    const reasonsHtml = args.reasons
+        .map((r) => `<li style="margin:0 0 6px;color:${INK};font-size:14px;line-height:1.5;">${esc(r)}</li>`)
+        .join("");
+
+    const text = `The post "${args.postTitle}" (ID: ${args.postId}) has reached ${args.reportCount} reports and needs review.
+Owner: ${args.ownerName || "—"} (${args.ownerEmail || "—"})
+Reasons:
+${reasonsText}
+
+Review it in the Part Find admin panel.`;
+
+    const html = baseLayout(`
+        ${heading("Post flagged for review ⚠️", "#b91c1c")}
+        <p style="margin:0 0 16px;color:${INK};font-size:15px;line-height:1.6;">
+            A post has reached <strong>${args.reportCount} user reports</strong> and needs your review.
+        </p>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 16px;">
+            <tr>
+                <td style="background-color:#fef2f2;border-left:4px solid #dc2626;border-radius:6px;padding:16px 18px;">
+                    <div style="color:${INK};font-size:16px;font-weight:700;line-height:1.4;">${title}</div>
+                    <div style="color:${MUTED};font-size:12px;margin-top:6px;">Post ID: ${esc(args.postId)}</div>
+                    <div style="color:${MUTED};font-size:13px;margin-top:6px;">Owner: ${owner} &lt;${ownerEmail}&gt;</div>
+                </td>
+            </tr>
+        </table>
+        <p style="margin:0 0 8px;color:${INK};font-size:14px;font-weight:700;">Reported reasons:</p>
+        <ul style="margin:0 0 16px;padding-left:20px;">${reasonsHtml}</ul>
+        <p style="margin:0;color:${MUTED};font-size:13px;line-height:1.6;">
+            Please review this post in the ${BRAND_NAME} admin panel and take appropriate action.
+        </p>
+    `, `A post has been reported ${args.reportCount} times and needs review`);
+
+    return { subject, text, html };
+}
+
+/**
  * Internal notification to the Part Find team (official@part-find.org) when a
  * recruiter creates a new post that is awaiting admin approval.
  */
