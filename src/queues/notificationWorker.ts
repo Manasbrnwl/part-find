@@ -4,7 +4,8 @@ import { logger } from "../../utils/logger";
 const { sendEmailNotification, transporter } = require("../../utils/notification/email.notification");
 import { lowRatingWarningTemplate, absentWarningTemplate, completionCertificateTemplate, generateCertificateHtml, otpEmailTemplate, postApprovedTemplate } from "../../utils/notification/emailTemplates";
 import { logoAttachment } from "../../utils/notification/logoAsset";
-import { sendFCMNotification, sendFCMToMultipleTokens } from "../../utils/firebase";
+import { sendFCMToMultipleTokens } from "../../utils/firebase";
+import { notifyUser, storeNotifications, purgeExpiredNotifications, retentionCutoff } from "../utils/notificationStore";
 import {
     NotificationType,
     JobReminderData,
@@ -18,8 +19,11 @@ import {
     CompletionCertificateData,
     OtpEmailData,
     InactiveReminderData,
+    ApplicationNotSelectedData,
     queueInactiveReminder,
+    queueApplicationNotSelected,
     scheduleInactiveUserScan,
+    scheduleDailyMaintenance,
 } from "./notificationQueue";
 import { PrismaClient } from "@prisma/client";
 
@@ -32,78 +36,90 @@ let otpEmailWorker: Worker | null = null;
  * Process job reminder notification
  */
 async function processJobReminder(data: JobReminderData) {
-    if (!data.fcmToken) {
-        logger.warn(`No FCM token for user ${data.userId}, skipping notification`);
-        return;
-    }
-
-    await sendFCMNotification(data.fcmToken, {
+    const { pushed } = await notifyUser({
+        userId: data.userId,
+        fcmToken: data.fcmToken,
+        type: NotificationType.JOB_REMINDER,
         title: "📅 Event Reminder",
         body: `Your job "${data.postTitle}" starts tomorrow at ${data.location}`,
-        reminderId: data.postId,
-        type: NotificationType.JOB_REMINDER,
+        postId: data.postId,
     });
 
-    logger.info(`Job reminder sent to user ${data.userId}`);
+    logger.info(`Job reminder stored for user ${data.userId} (pushed=${pushed})`);
 }
 
 /**
  * Process rating received notification
  */
 async function processRatingNotification(data: RatingNotificationData) {
-    if (!data.fcmToken) {
-        logger.warn(`No FCM token for user ${data.userId}, skipping notification`);
-        return;
-    }
-
     const stars = "⭐".repeat(data.rating);
 
-    await sendFCMNotification(data.fcmToken, {
+    const { pushed } = await notifyUser({
+        userId: data.userId,
+        fcmToken: data.fcmToken,
+        type: NotificationType.RATING_RECEIVED,
         title: "⭐ You received a rating!",
         body: `${data.recruiterName} rated you ${stars} for "${data.postTitle}"`,
-        reminderId: data.userId,
-        type: NotificationType.RATING_RECEIVED,
+        data: { rating: data.rating, recruiterName: data.recruiterName },
     });
 
-    logger.info(`Rating notification sent to user ${data.userId}`);
+    logger.info(`Rating notification stored for user ${data.userId} (pushed=${pushed})`);
 }
 
 /**
  * Process new job posted notification — broadcasts to all users with FCM tokens
  */
 async function processNewJobPosted(data: NewJobPostedData) {
+    const title = "🆕 New Event Posted!";
+    const body = `"${data.postTitle}" at ${data.companyName || "a company"} in ${data.location || "TBD"}`;
+
+    // 1. In-app feed row for every recipient (device or not)
+    const userIds = data.userIds ?? [];
+    if (userIds.length) {
+        const stored = await storeNotifications(
+            userIds.map((userId) => ({
+                userId,
+                type: NotificationType.NEW_JOB_POSTED,
+                title,
+                body,
+                postId: data.postId,
+            }))
+        );
+        logger.info(`New job notification stored for ${stored} users`);
+    }
+
+    // 2. Push to the devices we know about
     if (!data.fcmTokens.length) {
-        logger.warn("No FCM tokens available, skipping new job notification");
+        logger.warn("No FCM tokens available, skipping new job push");
         return;
     }
 
     await sendFCMToMultipleTokens(data.fcmTokens, {
-        title: "🆕 New Event Posted!",
-        body: `"${data.postTitle}" at ${data.companyName || "a company"} in ${data.location || "TBD"}`,
+        title,
+        body,
         reminderId: data.postId,
         type: NotificationType.NEW_JOB_POSTED,
+        postId: data.postId,
     });
 
-    logger.info(`New job notification broadcast to ${data.fcmTokens.length} users`);
+    logger.info(`New job notification broadcast to ${data.fcmTokens.length} devices`);
 }
 
 /**
  * Process new application notification — sent to the recruiter
  */
 async function processNewApplication(data: NewApplicationData) {
-    if (!data.recruiterFcmToken) {
-        logger.warn("No FCM token for recruiter, skipping application notification");
-        return;
-    }
-
-    await sendFCMNotification(data.recruiterFcmToken, {
+    const { pushed } = await notifyUser({
+        userId: data.recruiterId,
+        fcmToken: data.recruiterFcmToken,
+        type: NotificationType.NEW_APPLICATION,
         title: "📋 New Application!",
         body: `${data.applicantName} applied for "${data.postTitle}"`,
-        reminderId: data.postId,
-        type: NotificationType.NEW_APPLICATION,
+        postId: data.postId,
+        data: { applicantName: data.applicantName },
     });
 
-    logger.info(`Application notification sent to recruiter for post ${data.postId}`);
+    logger.info(`Application notification stored for recruiter ${data.recruiterId} (pushed=${pushed})`);
 }
 
 /**
@@ -111,16 +127,16 @@ async function processNewApplication(data: NewApplicationData) {
  * an admin approves their job post. Delivers a push notification and an email.
  */
 async function processPostApproved(data: PostApprovedData) {
-    // 1. Push notification
-    if (data.fcmToken) {
-        await sendFCMNotification(data.fcmToken, {
-            title: "✅ Your job post is live!",
-            body: `"${data.postTitle}" was approved and is now visible to candidates.`,
-            reminderId: data.postId,
-            type: NotificationType.POST_APPROVED,
-        }).catch((err) => logger.warn(`Post-approved push failed for ${data.recruiterId}: ${err?.message}`));
-        logger.info(`Post-approved FCM sent to recruiter ${data.recruiterId}`);
-    }
+    // 1. In-app row + push notification
+    const { pushed } = await notifyUser({
+        userId: data.recruiterId,
+        fcmToken: data.fcmToken,
+        type: NotificationType.POST_APPROVED,
+        title: "✅ Your job post is live!",
+        body: `"${data.postTitle}" was approved and is now visible to candidates.`,
+        postId: data.postId,
+    });
+    logger.info(`Post-approved notification stored for recruiter ${data.recruiterId} (pushed=${pushed})`);
 
     // 2. Email
     if (data.recruiterEmail) {
@@ -135,40 +151,85 @@ async function processPostApproved(data: PostApprovedData) {
  * recruiter/admin approves or rejects their application.
  */
 async function processApplicationStatus(data: ApplicationStatusData) {
-    if (!data.fcmToken) {
-        logger.warn(`No FCM token for user ${data.userId}, skipping status notification`);
-        return;
-    }
-
     const approved = String(data.status).toUpperCase() === "APPROVED";
     const by = data.recruiterName ? ` by ${data.recruiterName}` : "";
 
-    await sendFCMNotification(data.fcmToken, {
-        title: approved ? "🎉 You're selected!" : "Application update",
+    const { pushed } = await notifyUser({
+        userId: data.userId,
+        fcmToken: data.fcmToken,
+        type: NotificationType.APPLICATION_STATUS,
+        title: approved ? "🎉 You're selected!" : "Better luck next time 🍀",
         body: approved
             ? `Great news! Your application for "${data.postTitle}" was approved${by}.`
-            : `Your application for "${data.postTitle}" was not selected this time.`,
-        reminderId: data.userId,
-        type: NotificationType.APPLICATION_STATUS,
+            : `You weren't selected for "${data.postTitle}" this time. Don't give up — new gigs are posted every day!`,
+        postId: data.postId,
+        data: {
+            status: data.status,
+            applicationId: data.applicationId,
+            ...(data.rejectReason ? { rejectReason: data.rejectReason } : {}),
+        },
     });
 
-    logger.info(`Application status (${data.status}) notification sent to user ${data.userId}`);
+    logger.info(`Application status (${data.status}) notification stored for user ${data.userId} (pushed=${pushed})`);
+}
+
+/**
+ * "Better luck next time" for applicants who were still PENDING when a post
+ * closed recruitment or reached its start date. Skips anyone who already has a
+ * decision-type notification for this post within the retention window, so
+ * re-closing a post (or the daily sweep overlapping a manual close) can't
+ * notify the same person twice.
+ */
+async function processApplicationNotSelected(data: ApplicationNotSelectedData) {
+    if (!data.applicants.length) return;
+
+    const already = await prisma.notification.findMany({
+        where: {
+            postId: data.postId,
+            type: { in: [NotificationType.APPLICATION_NOT_SELECTED, NotificationType.APPLICATION_STATUS] },
+            userId: { in: data.applicants.map((a) => a.userId) },
+            createdAt: { gte: retentionCutoff() },
+        },
+        select: { userId: true },
+    });
+    const alreadyNotified = new Set(already.map((n) => n.userId));
+
+    const body =
+        data.reason === "closed"
+            ? `"${data.postTitle}" has finished selecting candidates and you weren't picked this time. Keep applying — your next gig is out there!`
+            : `"${data.postTitle}" has started and your application wasn't selected. Better luck next time — new gigs are posted every day!`;
+
+    let sent = 0;
+    for (const applicant of data.applicants) {
+        if (alreadyNotified.has(applicant.userId)) continue;
+        await notifyUser({
+            userId: applicant.userId,
+            fcmToken: applicant.fcmToken,
+            type: NotificationType.APPLICATION_NOT_SELECTED,
+            title: "Better luck next time 🍀",
+            body,
+            postId: data.postId,
+            data: { applicationId: applicant.applicationId, reason: data.reason },
+        });
+        sent++;
+    }
+
+    logger.info(`Not-selected notifications: ${sent} sent, ${alreadyNotified.size} already notified (post ${data.postId})`);
 }
 
 /**
  * Process low rating warning notification
  */
 async function processLowRatingWarning(data: LowRatingWarningData) {
-    // 1. Send FCM Notification if token is available
-    if (data.fcmToken) {
-        await sendFCMNotification(data.fcmToken, {
-            title: "⚠️ Important Account Warning",
-            body: `We've noticed several low ratings on your profile recently. Please check your email for details.`,
-            reminderId: data.userId,
-            type: NotificationType.LOW_RATING_WARNING,
-        });
-        logger.info(`Low rating FCM warning sent to user ${data.userId}`);
-    }
+    // 1. In-app row + push (if a device is registered)
+    const { pushed } = await notifyUser({
+        userId: data.userId,
+        fcmToken: data.fcmToken,
+        type: NotificationType.LOW_RATING_WARNING,
+        title: "⚠️ Important Account Warning",
+        body: `We've noticed several low ratings on your profile recently. Please check your email for details.`,
+    });
+    logger.info(`Low rating warning stored for user ${data.userId} (pushed=${pushed})`);
 
     // 2. Send Email Notification
     const { subject, text, html } = lowRatingWarningTemplate(data.userName);
@@ -180,16 +241,15 @@ async function processLowRatingWarning(data: LowRatingWarningData) {
  * Process absent warning notification
  */
 async function processAbsentWarning(data: AbsentWarningData) {
-    // 1. Send FCM Notification if token is available
-    if (data.fcmToken) {
-        await sendFCMNotification(data.fcmToken, {
-            title: "⚠️ Attendance Warning",
-            body: `You were marked as absent for "${data.postTitle}". This can affect your profile standing.`,
-            reminderId: data.userId,
-            type: NotificationType.ABSENT_WARNING,
-        });
-        logger.info(`Absent FCM warning sent to user ${data.userId}`);
-    }
+    // 1. In-app row + push (if a device is registered)
+    const { pushed } = await notifyUser({
+        userId: data.userId,
+        fcmToken: data.fcmToken,
+        type: NotificationType.ABSENT_WARNING,
+        title: "⚠️ Attendance Warning",
+        body: `You were marked as absent for "${data.postTitle}". This can affect your profile standing.`,
+    });
+    logger.info(`Absent warning stored for user ${data.userId} (pushed=${pushed})`);
 
     // 2. Send Email Notification
     const { subject, text, html } = absentWarningTemplate(data.userName, data.postTitle);
@@ -237,16 +297,16 @@ async function processCompletionCertificate(data: CompletionCertificateData) {
         ),
     ]);
 
-    // 2. Send FCM push notification
-    if (data.fcmToken) {
-        await sendFCMNotification(data.fcmToken, {
-            title: "🏆 Certificate Earned!",
-            body: `You've earned a certificate for "${data.postTitle}"!`,
-            reminderId: data.userId,
-            type: NotificationType.COMPLETION_CERTIFICATE,
-        });
-        logger.info(`Certificate FCM sent to user ${data.userId}`);
-    }
+    // 2. In-app row + push notification
+    const { pushed } = await notifyUser({
+        userId: data.userId,
+        fcmToken: data.fcmToken,
+        type: NotificationType.COMPLETION_CERTIFICATE,
+        title: "🏆 Certificate Earned!",
+        body: `You've earned a certificate for "${data.postTitle}"!`,
+        data: { rating: data.rating },
+    });
+    logger.info(`Certificate notification stored for user ${data.userId} (pushed=${pushed})`);
 
     // 3. Send email with PDF attachment
     const { subject, text, html } = completionCertificateTemplate(data.userName, data.postTitle, data.rating, data.recruiterName, issuedAt);
@@ -337,18 +397,16 @@ async function processInactiveReminder(data: InactiveReminderData) {
 
     if (data.fcmToken) {
         const isRecruiter = String(data.role).toUpperCase() === "RECRUITER";
-        const pushOk = await sendFCMNotification(data.fcmToken, {
+        const { pushed } = await notifyUser({
+            userId: data.userId,
+            fcmToken: data.fcmToken,
+            type: NotificationType.INACTIVE_USER_REMINDER,
             title: isRecruiter ? "Your next hire is a tap away 👋" : "New gigs are waiting 👋",
             body: isRecruiter
                 ? "Post a gig and start receiving applications today."
                 : "Fresh opportunities are live — come find your next gig.",
-            reminderId: data.userId,
-            type: NotificationType.INACTIVE_USER_REMINDER,
-        }).then(() => true).catch((err) => {
-            logger.warn(`Inactive push failed for ${data.userId}: ${err?.message}`);
-            return false;
         });
-        delivered = pushOk === true;
+        delivered = pushed;
     } else {
         logger.warn(`Inactive reminder skipped for ${data.userId} — no FCM token`);
     }
@@ -364,6 +422,53 @@ async function processInactiveReminder(data: InactiveReminderData) {
     } else {
         logger.warn(`Inactive reminder NOT delivered for ${data.userId} — leaving eligible`);
     }
+}
+
+/**
+ * Daily housekeeping (DB-only, always on):
+ *  1. Purge notifications past the retention window (default 7 days).
+ *  2. Sweep posts whose start date passed in the last 48h and tell any applicant
+ *     still PENDING "better luck next time". The 48h window overlaps the daily
+ *     cadence so a missed run doesn't skip a post; the worker de-dupes against
+ *     notifications already stored (retention window is much longer than 48h).
+ */
+async function processDailyMaintenance() {
+    await purgeExpiredNotifications();
+
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+
+    const startedPosts = await prisma.post.findMany({
+        where: {
+            is_active: true,
+            approval_status: "APPROVED",
+            startDate: { gte: windowStart, lte: now },
+            comments: { some: { status: "PENDING" } },
+        },
+        select: {
+            id: true,
+            title: true,
+            comments: {
+                where: { status: "PENDING" },
+                select: { id: true, userId: true, user: { select: { fcm_token: true } } },
+            },
+        },
+    });
+
+    for (const post of startedPosts) {
+        await queueApplicationNotSelected({
+            postId: post.id,
+            postTitle: post.title,
+            reason: "started",
+            applicants: post.comments.map((a) => ({
+                userId: a.userId,
+                applicationId: a.id,
+                fcmToken: a.user.fcm_token,
+            })),
+        });
+    }
+
+    logger.info(`Daily maintenance: ${startedPosts.length} started post(s) with pending applicants swept`);
 }
 
 export function startNotificationWorker() {
@@ -423,6 +528,14 @@ export function startNotificationWorker() {
 
                     case NotificationType.INACTIVE_USER_REMINDER:
                         await processInactiveReminder(job.data as InactiveReminderData);
+                        break;
+
+                    case NotificationType.APPLICATION_NOT_SELECTED:
+                        await processApplicationNotSelected(job.data as ApplicationNotSelectedData);
+                        break;
+
+                    case NotificationType.DAILY_MAINTENANCE:
+                        await processDailyMaintenance();
                         break;
 
                     default:
@@ -489,6 +602,11 @@ export function startNotificationWorker() {
             });
             logger.info("OTP email worker initialized");
         }
+
+        // Always-on daily housekeeping: notification retention + unselected sweep.
+        scheduleDailyMaintenance().catch((err) =>
+            logger.error("Failed to schedule daily maintenance", { error: err?.message })
+        );
 
         // Register the recurring inactive-user scan ONLY when explicitly enabled.
         // Off by default to avoid mass-sending through a rate-limited SMTP provider.

@@ -4,7 +4,8 @@ import { asyncHandler, handleNotFoundError, handleValidationError } from "../uti
 import { logger } from "../../utils/logger";
 import { sendFCMNotification } from "../../utils/firebase";
 import { broadcastNewJob } from "./postController";
-import { queuePostApproved } from "../queues/notificationQueue";
+import { queuePostApproved, queueApplicationStatusNotification, NotificationType } from "../queues/notificationQueue";
+import { storeNotification } from "../utils/notificationStore";
 
 const prisma = new PrismaClient();
 
@@ -549,6 +550,7 @@ export const updateApplicationStatus = asyncHandler(async (req: Request, res: Re
         select: {
           name: true,
           email: true,
+          fcm_token: true,
         }
       },
       post: {
@@ -560,6 +562,20 @@ export const updateApplicationStatus = asyncHandler(async (req: Request, res: Re
   });
 
   logger.info(`Admin updated application ${id} status to ${updatedApp.status}`);
+
+  // Same applicant notification the recruiter path sends — only when the
+  // decision actually changed, so editing a remark doesn't re-ping them.
+  if ((status === "APPROVED" || status === "REJECTED") && app.status !== status) {
+    queueApplicationStatusNotification({
+      userId: updatedApp.userId,
+      postId: updatedApp.postId,
+      applicationId: updatedApp.id,
+      postTitle: updatedApp.post.title,
+      status,
+      rejectReason: status === "REJECTED" ? remark ?? null : null,
+      fcmToken: updatedApp.user.fcm_token,
+    }).catch((err) => logger.error("Failed to queue application status notification", { error: err }));
+  }
 
   res.status(200).json({
     success: true,
@@ -594,11 +610,21 @@ export const sendUserNotification = asyncHandler(async (req: Request, res: Respo
     );
   }
 
+  // Persist to the user's in-app feed first so the message survives even if
+  // the push fails; the push carries the row id for mark-as-read on tap.
+  const stored = await storeNotification({
+    userId: id,
+    type: NotificationType.ADMIN_MESSAGE,
+    title,
+    body,
+  });
+
   const result = await sendFCMNotification(user.fcm_token, {
     title,
     body,
     reminderId: id,
-    type: "ADMIN_NOTIFICATION",
+    type: NotificationType.ADMIN_MESSAGE,
+    notificationId: stored.id,
   });
 
   if (!result.success) {

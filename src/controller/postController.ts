@@ -14,6 +14,7 @@ import {
   queueNewJobNotification,
   queueNewApplicationNotification,
   queueApplicationStatusNotification,
+  queueApplicationNotSelected,
   queueAbsentWarning,
   queueCompletionCertificate,
 } from "../queues/notificationQueue";
@@ -60,9 +61,11 @@ export async function notifyAdminPostReported(args: {
 }
 
 /**
- * Broadcast a "new job posted" FCM push to all active USER accounts (except the
- * poster). Called when a post becomes live — i.e. on admin approval, or at
- * creation when an admin posts (auto-approved). Fire-and-forget.
+ * Broadcast a "new job posted" notification to all active USER accounts (except
+ * the poster). Every recipient gets an in-app feed row; those with a device
+ * registered also get an FCM push. Called when a post becomes live — i.e. on
+ * admin approval, or at creation when an admin posts (auto-approved).
+ * Fire-and-forget.
  */
 export async function broadcastNewJob(post: {
   id: string;
@@ -71,26 +74,27 @@ export async function broadcastNewJob(post: {
   location: string | null;
   userId: string;
 }) {
-  const usersWithTokens = await prisma.user.findMany({
+  const recipients = await prisma.user.findMany({
     where: {
       is_active: true,
-      fcm_token: { not: null },
       role: "USER",
       id: { not: post.userId }, // Exclude the poster
     },
-    select: { fcm_token: true },
+    select: { id: true, fcm_token: true },
   });
 
-  const fcmTokens = usersWithTokens
+  const userIds = recipients.map((u) => u.id);
+  const fcmTokens = recipients
     .map((u) => u.fcm_token)
     .filter((token): token is string => Boolean(token));
 
-  if (fcmTokens.length > 0) {
+  if (userIds.length > 0) {
     await queueNewJobNotification({
       postId: post.id,
       postTitle: post.title,
       companyName: post.company_name || "A company",
       location: post.location || "TBD",
+      userIds,
       fcmTokens,
     });
   }
@@ -443,6 +447,27 @@ export const updatePostRecruitment = asyncHandler(async (req: Request, res: Resp
     data: { is_recruiting },
   });
 
+  // Closing recruitment is the recruiter's "I'm done picking" — anyone still
+  // PENDING wasn't selected, so let them know rather than leaving them hanging.
+  if (!is_recruiting && post.is_recruiting) {
+    const pending = await prisma.postApplied.findMany({
+      where: { postId: id, status: "PENDING" },
+      select: { id: true, userId: true, user: { select: { fcm_token: true } } },
+    });
+    if (pending.length) {
+      queueApplicationNotSelected({
+        postId: id,
+        postTitle: post.title,
+        reason: "closed",
+        applicants: pending.map((a) => ({
+          userId: a.userId,
+          applicationId: a.id,
+          fcmToken: a.user.fcm_token,
+        })),
+      }).catch((err) => logger.error("Failed to queue not-selected notifications", { error: err }));
+    }
+  }
+
   res.status(200).json({
     success: true,
     message: is_recruiting ? "Recruitment opened" : "Recruitment closed",
@@ -788,27 +813,26 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
     },
   });
 
-  // Schedule job reminder notification for 1 day before start
-  if (applicant?.fcm_token) {
-    scheduleJobReminder({
-      userId,
-      postId: id,
-      postTitle: post.title,
-      startDate: post.startDate,
-      location: post.location || "TBD",
-      fcmToken: applicant.fcm_token,
-    }).catch((err) => logger.error("Failed to schedule job reminder", { error: err }));
-  }
+  // Schedule job reminder notification for 1 day before start (in-app always;
+  // push if the applicant still has a device registered when it fires)
+  scheduleJobReminder({
+    userId,
+    postId: id,
+    postTitle: post.title,
+    startDate: post.startDate,
+    location: post.location || "TBD",
+    fcmToken: applicant?.fcm_token,
+  }).catch((err) => logger.error("Failed to schedule job reminder", { error: err }));
 
-  // Notify recruiter about the new application
-  if (recruiter?.fcm_token) {
-    queueNewApplicationNotification({
-      postId: id,
-      postTitle: post.title,
-      applicantName: applicant?.name || "A user",
-      recruiterFcmToken: recruiter.fcm_token,
-    }).catch((err) => logger.error("Failed to queue application notification", { error: err }));
-  }
+  // Notify recruiter about the new application (in-app always; push if they
+  // have a device registered)
+  queueNewApplicationNotification({
+    postId: id,
+    postTitle: post.title,
+    applicantName: applicant?.name || "A user",
+    recruiterId: post.userId,
+    recruiterFcmToken: recruiter?.fcm_token,
+  }).catch((err) => logger.error("Failed to queue application notification", { error: err }));
 
   res.status(201).json({
     success: true,
@@ -1155,15 +1179,21 @@ export const updateUserStatus = asyncHandler(
       }
     });
 
-    // Notify the applicant when a decision is made on their application.
+    // Notify the applicant when a decision is made on their application. The
+    // in-app row is always stored; the push only goes out if they have a device.
+    // Skip if the status didn't actually change (e.g. re-saving REJECTED with a
+    // new reason) so the applicant isn't pinged twice for the same decision.
     if (
       (status === "APPROVED" || status === "REJECTED") &&
-      updatedApplication.user.fcm_token
+      application.status !== status
     ) {
       await queueApplicationStatusNotification({
         userId: updatedApplication.userId,
+        postId: updatedApplication.postId,
+        applicationId: updatedApplication.id,
         postTitle: updatedApplication.post.title,
         status,
+        rejectReason: status === "REJECTED" ? rejectReason ?? null : null,
         fcmToken: updatedApplication.user.fcm_token,
       });
     }

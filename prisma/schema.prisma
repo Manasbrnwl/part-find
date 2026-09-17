@@ -74,6 +74,7 @@ model User {
   postReports         PostReport[]        @relation("UserPostReports")
   certificates        Certificate[]       @relation("UserCertificates")
   issuedCertificates  Certificate[]       @relation("RecruiterCertificates")
+  notifications       Notification[]
 }
 
 model RecruiterIndustry {
@@ -354,6 +355,29 @@ model PostReport {
 
   // One report per user per post
   @@unique([postId, reporterId])
+}
+
+// In-app notification feed. Every push we send to a user is also stored here
+// (even when the user has no FCM token) so the app can show a notification
+// centre with read/unread state. Rows older than NOTIFICATION_RETENTION_DAYS
+// (default 7) are purged by the daily maintenance job.
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  type      String    // NotificationType value (e.g. APPLICATION_STATUS)
+  title     String
+  body      String
+  postId    String?   // related post, when there is one (deep-link + dedup)
+  data      Json?     // extra payload for the app (applicationId, rating, ...)
+  is_read   Boolean   @default(false)
+  read_at   DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@index([postId, type])
 }
 
 model Certificate {

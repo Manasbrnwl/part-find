@@ -20,7 +20,9 @@ tags:
   - name: Ratings
     description: User rating system
   - name: Notifications
-    description: Push notification management (FCM)
+    description: >-
+      In-app notification feed + push (FCM). Every push sent to a user is also
+      stored in their feed (read/unread), kept for the last 7 days.
   - name: Master
     description: Master data endpoints
   - name: Certificates
@@ -241,6 +243,41 @@ components:
           type: string
         data:
           type: object
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          description: >-
+            One of JOB_REMINDER, RATING_RECEIVED, NEW_JOB_POSTED, POST_APPROVED,
+            NEW_APPLICATION, APPLICATION_STATUS, APPLICATION_NOT_SELECTED,
+            LOW_RATING_WARNING, ABSENT_WARNING, COMPLETION_CERTIFICATE,
+            INACTIVE_USER_REMINDER, ADMIN_MESSAGE, TEST_NOTIFICATION
+        title:
+          type: string
+        body:
+          type: string
+        postId:
+          type: string
+          nullable: true
+          description: Related post (for deep-linking), when there is one
+        data:
+          type: object
+          nullable: true
+          description: Extra payload (e.g. applicationId, status, rejectReason, rating)
+        is_read:
+          type: boolean
+        read_at:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
 
     ReferralCode:
       type: object
@@ -1029,10 +1066,11 @@ paths:
       summary: Update applicant status (Recruiter only)
       description: >-
         Updates an application's status. Setting the status to APPROVED or
-        REJECTED sends a push notification to the applicant. On REJECTED, the
-        optional `reason` is stored and surfaced to the applicant on their
-        applied-posts list (as `rejectReason`). Setting NOT_PRESENT flags the
-        user and sends an absence warning.
+        REJECTED stores an in-app notification for the applicant and pushes it
+        to their device (REJECTED is a "better luck next time" message). On
+        REJECTED, the optional `reason` is stored and surfaced to the applicant
+        on their applied-posts list (as `rejectReason`). Setting NOT_PRESENT
+        flags the user and sends an absence warning.
       parameters:
         - name: id
           in: path
@@ -1063,7 +1101,8 @@ paths:
       description: >-
         Toggles whether a post is actively accepting applications, independent of
         the post's end date. When recruitment is closed, users can no longer apply
-        even if the post has not yet ended.
+        even if the post has not yet ended. Closing also sends every applicant
+        still PENDING a "better luck next time" notification (in-app + push).
       parameters:
         - name: id
           in: path
@@ -1387,14 +1426,155 @@ paths:
                         type: integer
 
   # Notification Routes
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Get my notification feed
+      description: >-
+        The authenticated user's notifications from the last 7 days, newest
+        first. Older notifications are purged daily and never returned. The
+        response also carries `unreadCount` so the app can badge the bell in
+        the same request. Push payloads include `notificationId` so the app can
+        call the mark-as-read endpoint when a push is tapped.
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: unread
+          in: query
+          description: Set to `true` to return only unread notifications
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Notification feed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Notification'
+                      unreadCount:
+                        type: integer
+                      retentionDays:
+                        type: integer
+                        example: 7
+                      totalPages:
+                        type: integer
+                      currentPage:
+                        type: integer
+                      total:
+                        type: integer
+        '401':
+          description: Unauthorized
+
+  /notifications/unread-count:
+    get:
+      tags: [Notifications]
+      summary: Get my unread notification count
+      description: Lightweight badge endpoint (unread notifications within the last 7 days).
+      responses:
+        '200':
+          description: Unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      unreadCount:
+                        type: integer
+        '401':
+          description: Unauthorized
+
+  /notifications/read-all:
+    patch:
+      tags: [Notifications]
+      summary: Mark all my notifications as read
+      responses:
+        '200':
+          description: All marked as read; `data.updated` is the number changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          description: Unauthorized
+
+  /notifications/{id}/read:
+    patch:
+      tags: [Notifications]
+      summary: Mark one notification as read
+      description: Idempotent. Only the owner of the notification can mark it.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Marked as read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Notification not found (or not yours)
+
+  /notifications/{id}:
+    delete:
+      tags: [Notifications]
+      summary: Delete one of my notifications
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deleted
+        '401':
+          description: Unauthorized
+        '404':
+          description: Notification not found (or not yours)
+
   /notifications/test:
     post:
       tags: [Notifications]
       summary: Send a test push notification
-      description: Sends a test FCM push notification to the authenticated user. Useful for verifying that FCM is properly configured and the user's token is valid.
+      description: >-
+        Sends a test FCM push notification to the authenticated user and stores
+        it in their feed. Useful for verifying that FCM is properly configured,
+        the user's token is valid, and the feed endpoints work end to end.
       responses:
         '200':
-          description: Test notification sent successfully
+          description: Test notification sent successfully (`data.notificationId` is the stored row)
           content:
             application/json:
               schema:

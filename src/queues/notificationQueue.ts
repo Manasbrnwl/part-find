@@ -15,6 +15,13 @@ export enum NotificationType {
     OTP_EMAIL = "OTP_EMAIL",
     INACTIVE_SCAN = "INACTIVE_SCAN",
     INACTIVE_USER_REMINDER = "INACTIVE_USER_REMINDER",
+    // Applicant was left PENDING when the post closed / started ("better luck next time")
+    APPLICATION_NOT_SELECTED = "APPLICATION_NOT_SELECTED",
+    // Daily housekeeping: purge expired notifications + sweep unselected applicants
+    DAILY_MAINTENANCE = "DAILY_MAINTENANCE",
+    // Free-form message from an admin to one user
+    ADMIN_MESSAGE = "ADMIN_MESSAGE",
+    TEST_NOTIFICATION = "TEST_NOTIFICATION",
 }
 
 export interface InactiveReminderData {
@@ -31,7 +38,7 @@ export interface JobReminderData {
     postTitle: string;
     startDate: Date;
     location: string;
-    fcmToken: string;
+    fcmToken?: string | null;
 }
 
 export interface RatingNotificationData {
@@ -47,6 +54,9 @@ export interface NewJobPostedData {
     postTitle: string;
     companyName: string;
     location: string;
+    // Everyone who should see it in their in-app feed (with or without a device)
+    userIds: string[];
+    // Subset of those users that have a device registered for push
     fcmTokens: string[];
 }
 
@@ -63,15 +73,27 @@ export interface NewApplicationData {
     postId: string;
     postTitle: string;
     applicantName: string;
-    recruiterFcmToken: string;
+    recruiterId: string;
+    recruiterFcmToken?: string | null;
 }
 
 export interface ApplicationStatusData {
     userId: string;
+    postId?: string;
+    applicationId?: string;
     postTitle: string;
     status: string; // APPROVED | REJECTED
     recruiterName?: string;
-    fcmToken: string;
+    rejectReason?: string | null;
+    fcmToken?: string | null;
+}
+
+export interface ApplicationNotSelectedData {
+    postId: string;
+    postTitle: string;
+    // "closed" = recruiter closed recruitment; "started" = event start date passed
+    reason: "closed" | "started";
+    applicants: { userId: string; applicationId: string; fcmToken?: string | null }[];
 }
 
 export interface LowRatingWarningData {
@@ -259,6 +281,23 @@ export async function queueApplicationStatusNotification(data: ApplicationStatus
 }
 
 /**
+ * Queue a "better luck next time" notification for applicants who were still
+ * PENDING when a post stopped taking candidates. The worker de-duplicates
+ * against notifications already stored for the same post + user.
+ */
+export async function queueApplicationNotSelected(data: ApplicationNotSelectedData) {
+    if (!data.applicants.length) return;
+    await getNotificationQueue().add(
+        NotificationType.APPLICATION_NOT_SELECTED,
+        data,
+        {
+            jobId: `not-selected-${data.postId}-${Date.now()}`,
+        }
+    );
+    logger.info(`Not-selected notification queued for ${data.applicants.length} applicants of post ${data.postId}`);
+}
+
+/**
  * Queue a low rating warning for a user
  */
 export async function queueLowRatingWarning(data: LowRatingWarningData) {
@@ -329,6 +368,22 @@ export async function scheduleInactiveUserScan() {
         { name: NotificationType.INACTIVE_SCAN, data: {} }
     );
     logger.info(`Inactive-user scan scheduled (cron "${pattern}" ${tz})`);
+}
+
+/**
+ * Register (idempotently) the daily maintenance job: purges notifications past
+ * the retention window and sweeps posts that have started for applicants who
+ * were never given a decision. Always on — it's cheap and DB-only.
+ */
+export async function scheduleDailyMaintenance() {
+    const pattern = process.env.NOTIFICATION_MAINTENANCE_CRON || "30 3 * * *";
+    const tz = process.env.NOTIFICATION_MAINTENANCE_TZ || "Asia/Kolkata";
+    await getNotificationQueue().upsertJobScheduler(
+        "daily-maintenance",
+        { pattern, tz },
+        { name: NotificationType.DAILY_MAINTENANCE, data: {} }
+    );
+    logger.info(`Daily notification maintenance scheduled (cron "${pattern}" ${tz})`);
 }
 
 /**

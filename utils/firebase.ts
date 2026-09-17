@@ -10,8 +10,21 @@ interface FCMNotificationPayload {
   body: string;
   reminderId: string;
   type: string;
+  // Any extra string fields (e.g. notificationId, postId) are forwarded in the
+  // data payload so the app can deep-link / mark the in-app row as read.
   [key: string]: string;
 }
+
+const RESERVED_KEYS = new Set(["title", "body", "reminderId", "type"]);
+
+/** Extra string-valued keys from the payload (FCM data values must be strings). */
+const extraData = (notification: FCMNotificationPayload): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(notification)) {
+    if (!RESERVED_KEYS.has(k) && v !== undefined && v !== null) out[k] = String(v);
+  }
+  return out;
+};
 
 // Initialize Firebase Admin SDK
 const initializeFirebase = (): typeof admin => {
@@ -112,6 +125,7 @@ const sendFCMNotification = async (
       token: fcmToken,
       // Data payload - always delivered, even in background
       data: {
+        ...extraData(notification),
         title: notification.title,
         body: notification.body,
         reminderId: notification.reminderId.toString(),
@@ -192,6 +206,7 @@ const sendFCMToMultipleTokens = async (
       const message: admin.messaging.MulticastMessage = {
         tokens: batch,
         data: {
+          ...extraData(notification),
           title: notification.title,
           body: notification.body,
           reminderId: notification.reminderId.toString(),
