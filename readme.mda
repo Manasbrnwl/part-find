@@ -55,11 +55,12 @@ Part Find is a TypeScript-based backend application designed to connect users wi
 ### Environment Variables
 Create a .env file in the root directory with the following variables:
 ```
-# App connection. In production this points at PgBouncer (port 6432) with
-# ?pgbouncer=true; locally it can be the direct Postgres URL.
+# App connection. On the server this is PgBouncer (127.0.0.1:6432, transaction
+# pooling) with ?pgbouncer=true; Postgres itself has no TCP listener there.
+# Locally it can be a direct Postgres URL.
 DATABASE_URL="postgresql://username:password@localhost:5432/part_find_db"
-# Direct Postgres connection used by `prisma migrate` (bypasses PgBouncer).
-# Same value as DATABASE_URL when you are not running a pooler.
+# Connection used by `prisma migrate`. On the server this is the session-mode
+# PgBouncer alias (<db>_direct on 6432); locally, same value as DATABASE_URL.
 DIRECT_URL="postgresql://username:password@localhost:5432/part_find_db"
 # Prisma pool size for the single shared client (default 10)
 DB_POOL_SIZE=10
