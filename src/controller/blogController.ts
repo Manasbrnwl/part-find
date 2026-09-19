@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
+import { parsePagination, paginationMeta, searchTerm, contains } from "../utils/pagination";
 import { asyncHandler, handleNotFoundError } from "../utils/errorHandler";
 import { logger } from "../../utils/logger";
 
@@ -23,13 +24,21 @@ export const getAllBlogs = asyncHandler(async (req: Request, res: Response) => {
  * Get all blogs including inactive (Admin)
  */
 export const getAdminBlogs = asyncHandler(async (req: Request, res: Response) => {
-  const blogs = await prisma.blog.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+  const { page, limit, skip, take } = parsePagination(req);
+  const search = searchTerm(req);
+  const where: any = search
+    ? { OR: [{ title: contains(search) }, { content: contains(search) }, { author: contains(search) }] }
+    : {};
+
+  const [blogs, total] = await Promise.all([
+    prisma.blog.findMany({ where, skip, take, orderBy: { createdAt: "desc" } }),
+    prisma.blog.count({ where }),
+  ]);
 
   res.status(200).json({
     success: true,
     data: blogs,
+    pagination: paginationMeta(page, limit, total),
   });
 });
 

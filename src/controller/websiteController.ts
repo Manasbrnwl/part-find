@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
+import { parsePagination, paginationMeta, searchTerm, contains } from "../utils/pagination";
 import { asyncHandler, handleNotFoundError } from "../utils/errorHandler";
 import { logger } from "../../utils/logger";
 
@@ -10,13 +11,26 @@ import { logger } from "../../utils/logger";
  * Get all clients
  */
 export const getClients = asyncHandler(async (req: Request, res: Response) => {
-  const clients = await prisma.client.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+  const paging = parsePagination(req);
+  const search = searchTerm(req);
+  const where: any = search
+    ? { OR: [{ name: contains(search) }, { description: contains(search) }] }
+    : {};
+
+  // The landing page reads this unpaginated; only page when page/limit is sent.
+  const [clients, total] = await Promise.all([
+    prisma.client.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      ...(paging.explicit ? { skip: paging.skip, take: paging.take } : {}),
+    }),
+    prisma.client.count({ where }),
+  ]);
 
   res.status(200).json({
     success: true,
     data: clients,
+    ...(paging.explicit ? { pagination: paginationMeta(paging.page, paging.limit, total) } : {}),
   });
 });
 
@@ -109,13 +123,26 @@ export const deleteClient = asyncHandler(async (req: Request, res: Response) => 
  * Get all testimonials
  */
 export const getTestimonials = asyncHandler(async (req: Request, res: Response) => {
-  const testimonials = await prisma.testimonial.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+  const paging = parsePagination(req);
+  const search = searchTerm(req);
+  const where: any = search
+    ? { OR: [{ name: contains(search) }, { role: contains(search) }, { text: contains(search) }] }
+    : {};
+
+  // The landing page reads this unpaginated; only page when page/limit is sent.
+  const [testimonials, total] = await Promise.all([
+    prisma.testimonial.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      ...(paging.explicit ? { skip: paging.skip, take: paging.take } : {}),
+    }),
+    prisma.testimonial.count({ where }),
+  ]);
 
   res.status(200).json({
     success: true,
     data: testimonials,
+    ...(paging.explicit ? { pagination: paginationMeta(paging.page, paging.limit, total) } : {}),
   });
 });
 

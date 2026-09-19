@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
-import { PostApprovalStatus, ReportStatus } from "@prisma/client";
+import { PostApprovalStatus, ReportStatus, Role, Status } from "@prisma/client";
 import { prisma } from "../lib/prisma";
+import { parsePagination, paginationMeta, searchTerm, contains } from "../utils/pagination";
 import { asyncHandler, handleNotFoundError, handleValidationError } from "../utils/errorHandler";
 import { logger } from "../../utils/logger";
 import { sendFCMNotification } from "../../utils/firebase";
@@ -9,11 +10,47 @@ import { queuePostApproved, queueApplicationStatusNotification, NotificationType
 import { storeNotification } from "../utils/notificationStore";
 
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
- * Get all users
+ * GET /admin/users
+ * Paginated. Filters: ?search (name/email/phone/company), ?role, ?state,
+ * ?phone=AVAILABLE|NOT_AVAILABLE, ?joined_days=7|15|30.
+ * `meta` carries the filter-independent numbers the admin UI shows: the list of
+ * states to filter by, recent-signup counts and the overall user total.
  */
 export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
-  const users = await prisma.user.findMany({
+  const { page, limit, skip, take } = parsePagination(req);
+  const search = searchTerm(req);
+  const role = req.query.role as string | undefined;
+  const state = (req.query.state as string | undefined)?.trim();
+  const phone = req.query.phone as string | undefined;
+  const joinedDays = parseInt((req.query.joined_days as string) || "", 10);
+
+  const where: any = {};
+  if (search) {
+    where.OR = [
+      { name: contains(search) },
+      { email: contains(search) },
+      { phone_number: contains(search) },
+      { recruiter_company_name: contains(search) },
+    ];
+  }
+  if (role && role in Role) where.role = role as Role;
+  if (state) where.state = state;
+  if (phone === "AVAILABLE") where.phone_number = { not: null };
+  else if (phone === "NOT_AVAILABLE") where.phone_number = null;
+  if (Number.isFinite(joinedDays) && joinedDays > 0) {
+    where.createdAt = { gte: new Date(Date.now() - joinedDays * DAY_MS) };
+  }
+
+  const since = (days: number) => ({ createdAt: { gte: new Date(Date.now() - days * DAY_MS) } });
+
+  const [users, total, allTotal, joined7, joined15, joined30, stateRows] = await Promise.all([
+    prisma.user.findMany({
+    where,
+    skip,
+    take,
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -48,11 +85,29 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
         }
       },
     }
-  });
+    }),
+    prisma.user.count({ where }),
+    prisma.user.count(),
+    prisma.user.count({ where: since(7) }),
+    prisma.user.count({ where: since(15) }),
+    prisma.user.count({ where: since(30) }),
+    prisma.user.findMany({
+      where: { state: { not: null } },
+      distinct: ["state"],
+      select: { state: true },
+      orderBy: { state: "asc" },
+    }),
+  ]);
 
   res.status(200).json({
     success: true,
     data: users,
+    pagination: paginationMeta(page, limit, total),
+    meta: {
+      total: allTotal,
+      joinedCounts: { 7: joined7, 15: joined15, 30: joined30 },
+      states: stateRows.map((r) => r.state).filter((v): v is string => !!v && v.trim() !== ""),
+    },
   });
 });
 
@@ -221,20 +276,49 @@ export const adminUpdateUser = asyncHandler(async (req: Request, res: Response) 
  * Get all job posts. Optional ?status=PENDING|APPROVED|REJECTED filter — handy
  * for the moderation queue (?status=PENDING).
  */
+/**
+ * GET /admin/posts
+ * Paginated. Filters: ?search (title/category/company/recruiter/type),
+ * ?status=PENDING|APPROVED|REJECTED, ?type_id=<id>|none,
+ * ?schedule=COMPLETED|ONGOING (by endDate — used by the Post Reports screen).
+ * `counts` is filter-independent: overall total + posts awaiting approval.
+ */
 export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
+  const { page, limit, skip, take } = parsePagination(req);
+  const search = searchTerm(req);
   const status = req.query.status as string | undefined;
-  const typeId = req.query.type_id ? parseInt(req.query.type_id as string, 10) : undefined;
+  const typeRaw = req.query.type_id as string | undefined;
+  const schedule = req.query.schedule as string | undefined;
 
   const where: any = {};
+  if (search) {
+    where.OR = [
+      { title: contains(search) },
+      { category: contains(search) },
+      { company_name: contains(search) },
+      { user: { name: contains(search) } },
+      { user: { email: contains(search) } },
+      { user: { recruiter_company_name: contains(search) } },
+      { type: { name: contains(search) } },
+    ];
+  }
   if (status && status in PostApprovalStatus) {
     where.approval_status = status as PostApprovalStatus;
   }
-  if (typeId && !Number.isNaN(typeId)) {
-    where.type_id = typeId;
+  if (typeRaw === "none") {
+    where.type_id = null;
+  } else if (typeRaw) {
+    const typeId = parseInt(typeRaw, 10);
+    if (!Number.isNaN(typeId)) where.type_id = typeId;
   }
+  if (schedule === "COMPLETED") where.endDate = { lt: new Date() };
+  else if (schedule === "ONGOING") where.endDate = { gte: new Date() };
 
-  const posts = await prisma.post.findMany({
+  const [posts, total, allTotal, pendingTotal] = await Promise.all([
+    prisma.post.findMany({
     where,
+    skip,
+    take,
     orderBy: { createdAt: "desc" },
     include: {
       user: {
@@ -250,11 +334,17 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
         select: { comments: true } // comments are the applications
       }
     }
-  });
+    }),
+    prisma.post.count({ where }),
+    prisma.post.count(),
+    prisma.post.count({ where: { approval_status: PostApprovalStatus.PENDING } }),
+  ]);
 
   res.status(200).json({
     success: true,
     data: posts,
+    pagination: paginationMeta(page, limit, total),
+    counts: { all: allTotal, pending: pendingTotal },
   });
 });
 
@@ -353,8 +443,34 @@ export const updatePostApproval = asyncHandler(async (req: Request, res: Respons
 /**
  * Get all applications
  */
+/**
+ * GET /admin/applications
+ * Paginated. Filters: ?search (applicant name/email, post title/company, remark),
+ * ?status=PENDING|APPROVED|REJECTED|CANCELLED|NOT_PRESENT.
+ */
 export const getAllApplications = asyncHandler(async (req: Request, res: Response) => {
-  const applications = await prisma.postApplied.findMany({
+  const { page, limit, skip, take } = parsePagination(req);
+  const search = searchTerm(req);
+  const status = req.query.status as string | undefined;
+
+  const where: any = {};
+  if (search) {
+    where.OR = [
+      { user: { name: contains(search) } },
+      { user: { email: contains(search) } },
+      { post: { title: contains(search) } },
+      { post: { company_name: contains(search) } },
+      { remark: contains(search) },
+      { reject_reason: contains(search) },
+    ];
+  }
+  if (status && status in Status) where.status = status as Status;
+
+  const [applications, total] = await Promise.all([
+    prisma.postApplied.findMany({
+    where,
+    skip,
+    take,
     orderBy: { createdAt: "desc" },
     include: {
       user: {
@@ -394,11 +510,14 @@ export const getAllApplications = asyncHandler(async (req: Request, res: Respons
         }
       }
     }
-  });
+    }),
+    prisma.postApplied.count({ where }),
+  ]);
 
   res.status(200).json({
     success: true,
     data: applications,
+    pagination: paginationMeta(page, limit, total),
   });
 });
 
@@ -711,12 +830,21 @@ export const switchUserRole = asyncHandler(async (req: Request, res: Response) =
  */
 export const getPostReports = asyncHandler(async (req: Request, res: Response) => {
   const status = req.query.status as string | undefined;
-  const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
-  const limit = Math.min(100, Math.max(1, parseInt((req.query.limit as string) || "50", 10)));
+  const search = searchTerm(req);
+  const { page, limit } = parsePagination(req);
 
   const where: any = {};
   if (status && status in ReportStatus) {
     where.status = status as ReportStatus;
+  }
+  if (search) {
+    where.OR = [
+      { reason: contains(search) },
+      { details: contains(search) },
+      { post: { title: contains(search) } },
+      { reporter: { name: contains(search) } },
+      { reporter: { email: contains(search) } },
+    ];
   }
 
   const [reports, total, statusCounts] = await Promise.all([
@@ -752,7 +880,7 @@ export const getPostReports = asyncHandler(async (req: Request, res: Response) =
   res.status(200).json({
     success: true,
     data: reports,
-    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    pagination: paginationMeta(page, limit, total),
     counts,
   });
 });

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
+import { parsePagination, paginationMeta, searchTerm, contains } from "../utils/pagination";
 import {
   asyncHandler,
   handleNotFoundError,
@@ -16,16 +17,29 @@ import { logger } from "../../utils/logger";
  */
 export const getPostTypes = asyncHandler(async (req: Request, res: Response) => {
   const includeInactive = req.query.all === "true";
+  const search = searchTerm(req);
+  const paging = parsePagination(req);
 
-  const types = await prisma.postType.findMany({
-    where: includeInactive ? {} : { is_active: true },
-    orderBy: { name: "asc" },
-  });
+  const where: any = includeInactive ? {} : { is_active: true };
+  if (search) {
+    where.OR = [{ name: contains(search) }, { description: contains(search) }];
+  }
+
+  // The mobile app reads this list unpaginated; only page when page/limit is sent.
+  const [types, total] = await Promise.all([
+    prisma.postType.findMany({
+      where,
+      orderBy: { name: "asc" },
+      ...(paging.explicit ? { skip: paging.skip, take: paging.take } : {}),
+    }),
+    prisma.postType.count({ where }),
+  ]);
 
   res.status(200).json({
     success: true,
     message: "Post types retrieved successfully",
     data: types,
+    ...(paging.explicit ? { pagination: paginationMeta(paging.page, paging.limit, total) } : {}),
   });
 });
 

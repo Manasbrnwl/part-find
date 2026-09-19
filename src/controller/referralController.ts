@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
+import { parsePagination, paginationMeta, searchTerm, contains } from "../utils/pagination";
 import {
   asyncHandler,
   handleNotFoundError,
@@ -103,11 +104,26 @@ export const validateReferral = asyncHandler(async (req: Request, res: Response)
 /**
  * GET /admin/referrals  (admin)
  */
-export const getReferrals = asyncHandler(async (_req: Request, res: Response) => {
-  const referrals = await prisma.referralCode.findMany({
-    orderBy: { createdAt: "desc" },
+export const getReferrals = asyncHandler(async (req: Request, res: Response) => {
+  const { page, limit, skip, take } = parsePagination(req);
+  const search = searchTerm(req);
+  const where: any = search
+    ? { OR: [{ code: contains(search) }, { name: contains(search) }, { email: contains(search) }] }
+    : {};
+
+  const [referrals, total, totals] = await Promise.all([
+    prisma.referralCode.findMany({ where, skip, take, orderBy: { createdAt: "desc" } }),
+    prisma.referralCode.count({ where }),
+    // filter-independent totals for the admin counters
+    prisma.referralCode.aggregate({ _count: { _all: true }, _sum: { usage_count: true } }),
+  ]);
+
+  res.status(200).json({
+    success: true,
+    data: referrals,
+    pagination: paginationMeta(page, limit, total),
+    meta: { total: totals._count._all, totalUses: totals._sum.usage_count || 0 },
   });
-  res.status(200).json({ success: true, data: referrals });
 });
 
 /**
