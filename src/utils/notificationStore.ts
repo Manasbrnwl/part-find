@@ -1,8 +1,8 @@
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import { logger } from "../../utils/logger";
 import { sendFCMNotification } from "../../utils/firebase";
 
-const prisma = new PrismaClient();
 
 /** How long a notification stays in the feed before the daily purge removes it. */
 export const NOTIFICATION_RETENTION_DAYS = parseInt(process.env.NOTIFICATION_RETENTION_DAYS || "7", 10);

@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "./lib/prisma";
 import express, { Request, Response, NextFunction } from "express";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -29,7 +29,6 @@ dotenv.config({ override: true });
 
 const app = express();
 app.set("trust proxy", 1);
-const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
 
 // Middleware

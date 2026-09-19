@@ -25,9 +25,8 @@ import {
     scheduleInactiveUserScan,
     scheduleDailyMaintenance,
 } from "./notificationQueue";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 
-const prisma = new PrismaClient();
 
 let notificationWorker: Worker | null = null;
 let otpEmailWorker: Worker | null = null;

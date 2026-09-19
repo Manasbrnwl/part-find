@@ -1,9 +1,8 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import { Request, Response } from "express";
 import { asyncHandler, handleNotFoundError, handleForbiddenError } from "../utils/errorHandler";
 import { renderCertificateImage } from "../../utils/certificateImage";
 
-const prisma = new PrismaClient();
 
 /**
  * GET /certificate/my-certificates

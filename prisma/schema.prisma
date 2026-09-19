@@ -4,7 +4,11 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // App traffic goes through PgBouncer (transaction pooling) — the URL carries
+  // `?pgbouncer=true` so Prisma skips prepared statements / advisory locks.
+  url       = env("DATABASE_URL")
+  // Migrations need a real Postgres session, so they bypass the pooler.
+  directUrl = env("DIRECT_URL")
 }
 
 model User {

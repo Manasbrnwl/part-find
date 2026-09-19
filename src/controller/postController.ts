@@ -1,5 +1,6 @@
 import express from "express";
-import { PrismaClient, Status, PostApprovalStatus } from "@prisma/client";
+import { Status, PostApprovalStatus } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import { Request, Response } from "express";
 import { threadCpuUsage } from "node:process";
 import {
@@ -23,7 +24,6 @@ import { newPostAdminNotificationTemplate, postReportedAdminTemplate } from "../
 const { sendEmailNotification } = require("../../utils/notification/email.notification");
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 /**
  * Email the Part Find team (official@part-find.org, override via ADMIN_NOTIFY_EMAIL)

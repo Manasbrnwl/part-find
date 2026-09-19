@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import { Request, Response } from "express";
 import { releaseFcmTokenFromOthers } from "../utils/fcm";
 import bcrypt from "bcrypt";
@@ -17,7 +17,6 @@ import { getImage, deleteImage } from "../lib/storage";
 
 dotenv.config();
 
-const prisma = new PrismaClient();
 
 // Aadhaar card images are sensitive KYC docs — stored under the private "aadhaar"
 // category (S3 or local), never publicly served, and only reachable via the

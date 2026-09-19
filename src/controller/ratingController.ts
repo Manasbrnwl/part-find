@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import { Request, Response } from "express";
 import {
     handleControllerError,
@@ -9,7 +9,6 @@ import {
 } from "../utils/errorHandler";
 import { queueRatingNotification, queueLowRatingWarning, queueCompletionCertificate } from "../queues/notificationQueue";
 
-const prisma = new PrismaClient();
 
 /**
  * Create a rating for a user after job completion

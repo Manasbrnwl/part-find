@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import { Request, Response } from "express";
 import {
     handleValidationError,
@@ -9,7 +9,6 @@ import { sendFCMNotification } from "../../utils/firebase";
 import { NotificationType } from "../queues/notificationQueue";
 import { storeNotification, retentionCutoff, NOTIFICATION_RETENTION_DAYS } from "../utils/notificationStore";
 
-const prisma = new PrismaClient();
 
 /**
  * Send a test push notification to the current user

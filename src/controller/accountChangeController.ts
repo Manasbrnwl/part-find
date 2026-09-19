@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import {
   asyncHandler,
   handleNotFoundError,
@@ -9,7 +10,6 @@ import { generateOTP, calculateOTPExpiry, isOTPExpired } from "../../utils/otp/f
 import { queueOtpEmail } from "../queues/notificationQueue";
 import { logger } from "../../utils/logger";
 
-const prisma = new PrismaClient();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEV_OTP_BYPASS = "123456";

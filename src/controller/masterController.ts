@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import { Request, Response } from "express";
 import {
   handleControllerError,
@@ -7,7 +7,6 @@ import {
   asyncHandler,
 } from "../utils/errorHandler";
 
-const prisma = new PrismaClient();
 
 export const categoryLists = asyncHandler(
   async (req: Request, res: Response) => {

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { PrismaClient, PostApprovalStatus, ReportStatus } from "@prisma/client";
+import { PostApprovalStatus, ReportStatus } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import { asyncHandler, handleNotFoundError, handleValidationError } from "../utils/errorHandler";
 import { logger } from "../../utils/logger";
 import { sendFCMNotification } from "../../utils/firebase";
@@ -7,7 +8,6 @@ import { broadcastNewJob } from "./postController";
 import { queuePostApproved, queueApplicationStatusNotification, NotificationType } from "../queues/notificationQueue";
 import { storeNotification } from "../utils/notificationStore";
 
-const prisma = new PrismaClient();
 
 /**
  * Get all users

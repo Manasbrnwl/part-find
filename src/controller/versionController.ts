@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import { asyncHandler } from "../utils/errorHandler";
 
-const prisma = new PrismaClient();
 
 export const getAppVersion = asyncHandler(
   async (req: Request, res: Response) => {

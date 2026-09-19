@@ -1,9 +1,8 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import { asyncHandler, handleNotFoundError } from "../utils/errorHandler";
 import { logger } from "../../utils/logger";
 
-const prisma = new PrismaClient();
 
 /**
  * Get all active blogs (Public)

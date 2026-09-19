@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -30,7 +30,6 @@ import { queueOtpEmail } from "../queues/notificationQueue";
 
 dotenv.config();
 
-const prisma = new PrismaClient();
 
 /**
  * Check if the user is a new user by checking if any of the required fields are missing

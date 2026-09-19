@@ -1,5 +1,5 @@
 import express, { Request, Response, NextFunction } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import { authenticate, authorize } from "../middleware/authMiddleware";
 import {
   getAllUsers,
@@ -20,7 +20,6 @@ import sharp from "sharp";
 import { storeImage } from "../lib/storage";
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // Use memoryStorage so we can compress with sharp before storing
 const memoryUpload = multer({ storage: multer.memoryStorage() });

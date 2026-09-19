@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import {
   asyncHandler,
   handleNotFoundError,
@@ -7,7 +7,6 @@ import {
 } from "../utils/errorHandler";
 import { logger } from "../../utils/logger";
 
-const prisma = new PrismaClient();
 
 /**
  * GET /post/types
