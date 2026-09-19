@@ -5,7 +5,13 @@
 # via peer auth as the postgres OS user) use.
 # Idempotent — safe to re-run. Does NOT touch the apps; see cutover-apps.sh.
 #
-#   sudo bash setup-pgbouncer.sh
+#   sudo bash setup-pgbouncer.sh                      # local-only (127.0.0.1:6432)
+#   sudo PUBLIC=1 DB_HOST=db.part-find.org bash setup-pgbouncer.sh
+#       # also listen on the public interface with TLS (Let's Encrypt cert for
+#       # DB_HOST via certbot, self-signed fallback). The DNS A record for
+#       # DB_HOST must already point at this box, and the EC2 security group
+#       # must allow inbound TCP 6432 from YOUR IP/32 only. Clients then use
+#       # postgresql://user:pw@db.part-find.org:6432/<db>_direct?sslmode=require
 #
 # Steps:
 #   1. apt installs pgbouncer (PGDG repo is already configured for Postgres 17)
@@ -24,6 +30,8 @@ set -euo pipefail
 if [[ $EUID -ne 0 ]]; then echo "run with sudo"; exit 1; fi
 PGCONF_DIR=/etc/postgresql/17/main
 SOCK=/var/run/postgresql
+PUBLIC=${PUBLIC:-0}                      # 1 = expose 6432 on all interfaces with TLS
+DB_HOST=${DB_HOST:-db.part-find.org}     # hostname clients will use (for the TLS cert)
 
 echo "== 1. install"
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pgbouncer >/dev/null
@@ -55,8 +63,15 @@ partfind_prod_direct = host=$SOCK dbname=partfind_prod pool_mode=session pool_si
 partfind_dev_direct  = host=$SOCK dbname=partfind_dev  pool_mode=session pool_size=2
 
 [pgbouncer]
-listen_addr = 127.0.0.1
+listen_addr = $( [[ "$PUBLIC" == "1" ]] && echo "*" || echo "127.0.0.1" )
 listen_port = 6432
+$( [[ "$PUBLIC" == "1" ]] && cat <<TLS
+;; Public mode: TLS is mandatory for clients (cert for $DB_HOST, see step 3b)
+client_tls_sslmode = require
+client_tls_key_file = /etc/pgbouncer/tls/server.key
+client_tls_cert_file = /etc/pgbouncer/tls/server.crt
+TLS
+)
 unix_socket_dir = $SOCK
 auth_type = scram-sha-256
 auth_file = /etc/pgbouncer/userlist.txt
@@ -81,6 +96,38 @@ pidfile = $SOCK/pgbouncer.pid
 log_connections = 0
 log_disconnections = 0
 INI
+
+if [[ "$PUBLIC" == "1" ]]; then
+  echo "== 3b. TLS certificate for $DB_HOST"
+  mkdir -p /etc/pgbouncer/tls
+  # PgBouncer runs as 'postgres' and can't read /etc/letsencrypt, so a deploy
+  # hook copies the cert there (and re-copies on every renewal).
+  cat > /etc/letsencrypt/renewal-hooks/deploy/pgbouncer-tls.sh 2>/dev/null <<HOOK || true
+#!/usr/bin/env bash
+# Copy the renewed $DB_HOST cert where PgBouncer (user postgres) can read it.
+set -e
+LIVE=/etc/letsencrypt/live/$DB_HOST
+[[ -f "\$LIVE/fullchain.pem" ]] || exit 0
+install -o postgres -g postgres -m 644 "\$LIVE/fullchain.pem" /etc/pgbouncer/tls/server.crt
+install -o postgres -g postgres -m 600 "\$LIVE/privkey.pem"   /etc/pgbouncer/tls/server.key
+systemctl reload pgbouncer || systemctl restart pgbouncer
+HOOK
+  chmod +x /etc/letsencrypt/renewal-hooks/deploy/pgbouncer-tls.sh 2>/dev/null || true
+
+  if command -v certbot >/dev/null && certbot certonly --nginx -d "$DB_HOST" --non-interactive --agree-tos --keep-until-expiring \
+       --register-unsafely-without-email >/dev/null 2>&1; then
+    bash /etc/letsencrypt/renewal-hooks/deploy/pgbouncer-tls.sh || true
+    echo "   Let's Encrypt cert installed for $DB_HOST (auto-renews via certbot timer)"
+  else
+    echo "   certbot unavailable/failed (DNS not live yet?) — using a self-signed cert; re-run later to upgrade"
+    openssl req -new -x509 -days 3650 -nodes -subj "/CN=$DB_HOST" \
+      -keyout /etc/pgbouncer/tls/server.key -out /etc/pgbouncer/tls/server.crt >/dev/null 2>&1
+  fi
+  chown -R postgres:postgres /etc/pgbouncer/tls
+  chmod 600 /etc/pgbouncer/tls/server.key
+  chmod 644 /etc/pgbouncer/tls/server.crt
+  openssl x509 -in /etc/pgbouncer/tls/server.crt -noout -subject -issuer -enddate | sed 's/^/   /'
+fi
 
 echo "== 4. pg_hba: partfind_* roles over the socket with scram (postgres OS user keeps peer)"
 if ! grep -q "# pgbouncer-scram" "$PGCONF_DIR/pg_hba.conf"; then
@@ -118,5 +165,14 @@ for f in /home/ubuntu/part-find-2/part-find/.env /home/ubuntu/part-find-dev/.env
   done
 done
 echo "   direct 5432 (should FAIL): $(psql "postgresql://x:x@127.0.0.1:5432/postgres" -tAc "select 1" 2>&1 | tail -1 | cut -c1-70)"
+
+if [[ "$PUBLIC" == "1" ]]; then
+  echo "== 7. public listener"
+  ss -ltn | grep ":6432" | sed 's/^/   /'
+  PUBIP=$(curl -s --max-time 5 http://169.254.169.254/latest/meta-data/public-ipv4 || echo "?")
+  echo "   public IP: $PUBIP   DNS $DB_HOST -> $(getent hosts "$DB_HOST" | awk '{print $1}' || echo "not resolving yet")"
+  echo "   TLS handshake: $(echo | openssl s_client -connect 127.0.0.1:6432 -starttls postgres -servername "$DB_HOST" 2>/dev/null | grep -E "subject=|Verify return" | head -2 | tr '\n' ' ')"
+  echo "   Remember: EC2 security group must allow TCP 6432 from your IP/32 only."
+fi
 
 echo "== done. Next: bash cutover-apps.sh   (points both apps at 6432 and restarts them)"
