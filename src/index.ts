@@ -18,6 +18,9 @@ import websiteRoutes from "./routes/websiteRoutes";
 import legalRoutes from "./routes/legalRoutes";
 import referralRoutes from "./routes/referralRoutes";
 import imageRoutes from "./routes/imageRoutes";
+import chatRoutes from "./routes/chatRoutes";
+import http from "http";
+import { initSocket } from "./lib/socket";
 import { startNotificationWorker } from "./queues/notificationWorker";
 import { logger, morganStream } from "../utils/logger";
 import swaggerUi from 'swagger-ui-express';
@@ -70,6 +73,8 @@ app.use("/api/v1/blogs", blogRoutes);
 app.use("/api/v1/website", websiteRoutes);
 app.use("/api/v1/legal", legalRoutes);
 app.use("/api/v1/referral", referralRoutes);
+// Recruiter ↔ applicant chat (REST; live updates over Socket.IO at /socket.io)
+app.use("/api/v1/chat", chatRoutes);
 
 // Image serving — proxies profile/recruiter images from S3 (or local disk in
 // fallback mode). Same /api/v1/images/... URLs as before, so clients are unchanged.
@@ -93,8 +98,10 @@ try {
   logger.error("Failed to start notification worker", { error: err });
 }
 
-// Start server
-app.listen(PORT, () => {
+// Start server (plain http server so Socket.IO can share the port)
+const server = http.createServer(app);
+initSocket(server);
+server.listen(PORT, () => {
   logger.info(`Server is running on PORT ${PORT}`);
 });
 

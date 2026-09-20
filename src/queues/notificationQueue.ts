@@ -12,6 +12,8 @@ export enum NotificationType {
     LOW_RATING_WARNING = "LOW_RATING_WARNING",
     ABSENT_WARNING = "ABSENT_WARNING",
     COMPLETION_CERTIFICATE = "COMPLETION_CERTIFICATE",
+    // New chat message from the other party while the recipient was offline
+    CHAT_MESSAGE = "CHAT_MESSAGE",
     OTP_EMAIL = "OTP_EMAIL",
     INACTIVE_SCAN = "INACTIVE_SCAN",
     INACTIVE_USER_REMINDER = "INACTIVE_USER_REMINDER",

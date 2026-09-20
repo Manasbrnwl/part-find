@@ -35,6 +35,7 @@ import {
   updateTestimonial,
   deleteTestimonial,
 } from "../controller/websiteController";
+import { adminListThreads, adminThreadMessages } from "../controller/chatController";
 import {
   getReferrals,
   createReferral,
@@ -86,6 +87,10 @@ router.delete("/clients/:id", deleteClient);
 router.post("/testimonials", createTestimonial);
 router.patch("/testimonials/:id", updateTestimonial);
 router.delete("/testimonials/:id", deleteTestimonial);
+
+// Chat moderation (read-only)
+router.get("/chats", adminListThreads);
+router.get("/chats/:id/messages", adminThreadMessages);
 
 // Referral codes administration
 router.get("/referrals", getReferrals);

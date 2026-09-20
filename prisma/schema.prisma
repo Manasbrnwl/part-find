@@ -79,6 +79,9 @@ model User {
   certificates        Certificate[]       @relation("UserCertificates")
   issuedCertificates  Certificate[]       @relation("RecruiterCertificates")
   notifications       Notification[]
+  applicantThreads    ChatThread[]        @relation("ApplicantThreads")
+  recruiterThreads    ChatThread[]        @relation("RecruiterThreads")
+  chatMessages        ChatMessage[]
 }
 
 model RecruiterIndustry {
@@ -180,6 +183,7 @@ model Post {
   recruiterRatings RecruiterRating[]
   certificates   Certificate[]
   reports        PostReport[]
+  chatThreads    ChatThread[]
 
   @@unique([userId, title, startDate], map: "post_unique")
 }
@@ -198,6 +202,8 @@ model postApplied {
   attended_at  DateTime?
   post      Post     @relation(fields: [postId], references: [id])
   user      User     @relation(fields: [userId], references: [id])
+
+  chatThread ChatThread?
 
   @@unique([userId, postId], map: "user_post_unique")
 }
@@ -455,3 +461,51 @@ model ReferralCode {
   updatedAt   DateTime @updatedAt
 }
 
+
+// ── Recruiter ↔ applicant chat ───────────────────────────────────────────────
+// One thread per application, created when the user applies. Messaging is only
+// allowed while the post hasn't started (post.startDate in the future); after
+// that the thread stays readable but locked. Read state is tracked per side on
+// the thread (cheaper than per-message receipts): a message is unread for a
+// participant when it was sent by the other side after their *_last_read_at.
+model ChatThread {
+  id            String   @id @default(uuid())
+  postId        String
+  applicationId String   @unique
+  applicantId   String   // the USER who applied
+  recruiterId   String   // the post owner
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // denormalised for the thread list
+  last_message_at      DateTime?
+  last_message_preview String?
+  last_sender_id       String?
+  message_count        Int       @default(0)
+
+  applicant_last_read_at DateTime?
+  recruiter_last_read_at DateTime?
+
+  post        Post        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  application postApplied @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  applicant   User        @relation("ApplicantThreads", fields: [applicantId], references: [id], onDelete: Cascade)
+  recruiter   User        @relation("RecruiterThreads", fields: [recruiterId], references: [id], onDelete: Cascade)
+  messages    ChatMessage[]
+
+  @@unique([postId, applicantId])
+  @@index([applicantId, last_message_at])
+  @@index([recruiterId, last_message_at])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  threadId  String
+  senderId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender User       @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}

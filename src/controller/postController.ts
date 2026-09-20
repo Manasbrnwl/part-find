@@ -1,6 +1,7 @@
 import express from "express";
 import { Status, PostApprovalStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
+import { ensureThreadForApplication } from "./chatController";
 import { Request, Response } from "express";
 import { threadCpuUsage } from "node:process";
 import {
@@ -812,6 +813,11 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
       content: req.body.content || "",
     },
   });
+
+  // Open the recruiter ↔ applicant chat thread for this application.
+  ensureThreadForApplication(application.id).catch((err) =>
+    logger.error("Failed to create chat thread for application", { applicationId: application.id, error: err?.message })
+  );
 
   // Schedule job reminder notification for 1 day before start (in-app always;
   // push if the applicant still has a device registered when it fires)
