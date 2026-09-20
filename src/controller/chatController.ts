@@ -209,6 +209,31 @@ export const threadForApplication = asyncHandler(async (req: Request, res: Respo
   res.status(200).json({ success: true, data: shapeThread(thread, userId, unread) });
 });
 
+/**
+ * GET /chat/threads/lookup?postId=<id>[&applicantId=<id>]
+ * Find (or create) the thread for a post from what each side already has:
+ * the applicant passes just the postId; the recruiter also passes applicantId.
+ */
+export const lookupThread = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId as string;
+  const postId = String(req.query.postId ?? "").trim();
+  const applicantId = String(req.query.applicantId ?? userId).trim();
+  if (!postId) throw handleValidationError("postId is required");
+
+  const application = await prisma.postApplied.findFirst({
+    where: { postId, userId: applicantId },
+    select: { id: true },
+  });
+  if (!application) throw handleNotFoundError("Application");
+
+  const thread = await ensureThreadForApplication(application.id);
+  if (thread.applicantId !== userId && thread.recruiterId !== userId) {
+    throw handleForbiddenError("You are not a participant of this chat");
+  }
+  const unread = await unreadCountFor(thread, userId);
+  res.status(200).json({ success: true, data: shapeThread(thread, userId, unread) });
+});
+
 /** GET /chat/threads/:id */
 export const getThread = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.userId as string;

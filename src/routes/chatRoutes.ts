@@ -4,6 +4,7 @@ import {
   listMyThreads,
   myUnreadCount,
   threadForApplication,
+  lookupThread,
   getThread,
   listMessages,
   sendMessage,
@@ -18,6 +19,7 @@ router.use(authenticate, authorize(["USER", "RECRUITER", "ADMIN"]));
 
 router.get("/threads", listMyThreads);
 router.get("/unread-count", myUnreadCount);
+router.get("/threads/lookup", lookupThread);
 router.get("/threads/by-application/:applicationId", threadForApplication);
 router.get("/threads/:id", getThread);
 router.get("/threads/:id/messages", listMessages);

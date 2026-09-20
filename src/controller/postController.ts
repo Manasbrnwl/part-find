@@ -881,6 +881,7 @@ export const getAppliedPosts = asyncHandler(
               dressCode: true,
             },
           },
+          id: true,
           status: true,
           content: true,
           reject_reason: true,
@@ -913,6 +914,7 @@ export const getAppliedPosts = asyncHandler(
       data: {
         posts: posts.map((post) => ({
           ...post.post,
+          applicationId: post.id,
           status: post.post.endDate > new Date() ? post.status : "closed",
           content: post.content,
           // Reason the recruiter/admin rejected this application (if any), so the
