@@ -14,10 +14,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * GET /admin/users
- * Paginated. Filters: ?search (name/email/phone/company), ?role, ?state,
+ * Paginated. Filters: ?search (name/email/phone/company/registration),
+ * ?role (single or comma-separated, e.g. RECRUITER,SERVICE_SEEKER), ?state,
  * ?phone=AVAILABLE|NOT_AVAILABLE, ?joined_days=7|15|30.
- * `meta` carries the filter-independent numbers the admin UI shows: the list of
- * states to filter by, recent-signup counts and the overall user total.
+ * `meta` carries the numbers the admin UI shows outside the filtered page:
+ * states to filter by, per-role totals, and recent-signup counts scoped to the
+ * requested role(s) only (so the Users and Recruiters screens each get their own).
  */
 export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
   const { page, limit, skip, take } = parsePagination(req);
@@ -34,9 +36,15 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
       { email: contains(search) },
       { phone_number: contains(search) },
       { recruiter_company_name: contains(search) },
+      { recruiter_company_registration: contains(search) },
     ];
   }
-  if (role && role in Role) where.role = role as Role;
+  const roles = (role || "")
+    .split(",")
+    .map((r) => r.trim())
+    .filter((r): r is Role => r in Role);
+  const roleWhere: any = roles.length === 1 ? { role: roles[0] } : roles.length > 1 ? { role: { in: roles } } : {};
+  Object.assign(where, roleWhere);
   if (state) where.state = state;
   if (phone === "AVAILABLE") where.phone_number = { not: null };
   else if (phone === "NOT_AVAILABLE") where.phone_number = null;
@@ -44,9 +52,9 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
     where.createdAt = { gte: new Date(Date.now() - joinedDays * DAY_MS) };
   }
 
-  const since = (days: number) => ({ createdAt: { gte: new Date(Date.now() - days * DAY_MS) } });
+  const since = (days: number) => ({ ...roleWhere, createdAt: { gte: new Date(Date.now() - days * DAY_MS) } });
 
-  const [users, total, allTotal, joined7, joined15, joined30, stateRows] = await Promise.all([
+  const [users, total, allTotal, roleTotal, joined7, joined15, joined30, stateRows, roleRows] = await Promise.all([
     prisma.user.findMany({
     where,
     skip,
@@ -65,6 +73,7 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
       recruiter_type: true,
       recruiter_company_registration: true,
       recruiter_company_address: true,
+      recruiter_company_logo: true,
       date_of_birth: true,
       gender: true,
       height: true,
@@ -88,6 +97,7 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
     }),
     prisma.user.count({ where }),
     prisma.user.count(),
+    prisma.user.count({ where: roleWhere }),
     prisma.user.count({ where: since(7) }),
     prisma.user.count({ where: since(15) }),
     prisma.user.count({ where: since(30) }),
@@ -97,7 +107,13 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
       select: { state: true },
       orderBy: { state: "asc" },
     }),
+    prisma.user.groupBy({ by: ["role"], _count: { _all: true } }),
   ]);
+
+  const roleCounts = roleRows.reduce((acc: Record<string, number>, r) => {
+    if (r.role) acc[r.role] = r._count._all;
+    return acc;
+  }, {});
 
   res.status(200).json({
     success: true,
@@ -105,7 +121,8 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
     pagination: paginationMeta(page, limit, total),
     meta: {
       total: allTotal,
-      joinedCounts: { 7: joined7, 15: joined15, 30: joined30 },
+      roleCounts,
+      joinedCounts: { all: roleTotal, 7: joined7, 15: joined15, 30: joined30 },
       states: stateRows.map((r) => r.state).filter((v): v is string => !!v && v.trim() !== ""),
     },
   });
