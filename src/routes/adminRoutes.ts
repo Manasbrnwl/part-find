@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authenticate, authorize } from "../middleware/authMiddleware";
 import {
   getAllUsers,
+  getUserById,
   toggleUserStatus,
   adminUpdateUser,
   switchUserRole,
@@ -50,6 +51,7 @@ const router = Router();
 router.use(authenticate, authorize(["ADMIN"]));
 
 router.get("/users", getAllUsers);
+router.get("/users/:id", getUserById);
 router.patch("/users/:id/toggle", toggleUserStatus);
 router.patch("/users/:id/role", switchUserRole);
 router.patch("/users/:id", adminUpdateUser);

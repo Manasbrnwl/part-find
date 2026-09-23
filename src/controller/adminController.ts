@@ -12,6 +12,59 @@ import { storeNotification } from "../utils/notificationStore";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** Everything the admin panel's profile view renders. */
+const adminUserSelect = {
+  id: true,
+  email: true,
+  name: true,
+  phone_number: true,
+  role: true,
+  is_active: true,
+  fcm_token: true,
+  createdAt: true,
+  recruiter_company_name: true,
+  recruiter_type: true,
+  recruiter_company_registration: true,
+  recruiter_company_address: true,
+  recruiter_company_logo: true,
+  date_of_birth: true,
+  gender: true,
+  height: true,
+  weight: true,
+  english_level: true,
+  address: true,
+  state: true,
+  country: true,
+  experience: true,
+  education: true,
+  skills: true,
+  intro_video_link: true,
+  userImages: {
+    where: { is_deleted: false },
+    select: {
+      id: true,
+      image: true,
+    },
+  },
+} as const;
+
+/**
+ * GET /admin/users/:id
+ * One user with the full profile projection — lets the panel open a candidate
+ * or recruiter profile from anywhere (post applicants, chats, reports) without
+ * searching the list for them.
+ */
+export const getUserById = asyncHandler(async (req: Request, res: Response) => {
+  const user = await prisma.user.findUnique({
+    where: { id: req.params.id as string },
+    select: adminUserSelect,
+  });
+
+  if (!user) throw handleNotFoundError("User");
+
+  res.status(200).json({ success: true, data: user });
+});
+
 /**
  * GET /admin/users
  * Paginated. Filters: ?search (name/email/phone/company/registration),
@@ -56,44 +109,11 @@ export const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
 
   const [users, total, allTotal, roleTotal, joined7, joined15, joined30, stateRows, roleRows] = await Promise.all([
     prisma.user.findMany({
-    where,
-    skip,
-    take,
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      phone_number: true,
-      role: true,
-      is_active: true,
-      fcm_token: true,
-      createdAt: true,
-      recruiter_company_name: true,
-      recruiter_type: true,
-      recruiter_company_registration: true,
-      recruiter_company_address: true,
-      recruiter_company_logo: true,
-      date_of_birth: true,
-      gender: true,
-      height: true,
-      weight: true,
-      english_level: true,
-      address: true,
-      state: true,
-      country: true,
-      experience: true,
-      education: true,
-      skills: true,
-      intro_video_link: true,
-      userImages: {
-        where: { is_deleted: false },
-        select: {
-          id: true,
-          image: true,
-        }
-      },
-    }
+      where,
+      skip,
+      take,
+      orderBy: { createdAt: "desc" },
+      select: adminUserSelect,
     }),
     prisma.user.count({ where }),
     prisma.user.count(),
