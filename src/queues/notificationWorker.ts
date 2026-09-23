@@ -13,6 +13,9 @@ import {
     NewJobPostedData,
     PostApprovedData,
     NewApplicationData,
+    NewApplicationDigestData,
+    APPLICATION_DIGEST_WINDOW_MS,
+    queueApplicationDigest,
     ApplicationStatusData,
     LowRatingWarningData,
     AbsentWarningData,
@@ -105,9 +108,45 @@ async function processNewJobPosted(data: NewJobPostedData) {
 }
 
 /**
- * Process new application notification — sent to the recruiter
+ * When the recruiter was last told about applicants for this post — the start
+ * of the current quiet window. Covers both the instant notification and the
+ * digest so the two never fire back to back.
+ */
+async function lastApplicantNotificationAt(postId: string, recruiterId: string): Promise<Date | null> {
+    const last = await prisma.notification.findFirst({
+        where: {
+            userId: recruiterId,
+            postId,
+            type: { in: [NotificationType.NEW_APPLICATION, NotificationType.NEW_APPLICATION_DIGEST] },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+    });
+    return last?.createdAt ?? null;
+}
+
+/**
+ * Process new application notification — sent to the recruiter.
+ *
+ * The first applicant after a quiet period notifies immediately; everyone who
+ * applies inside the window that follows is rolled up into a single digest
+ * (see processNewApplicationDigest), so a post with 200 applicants produces a
+ * handful of notifications instead of 200.
  */
 async function processNewApplication(data: NewApplicationData) {
+    const lastAt = await lastApplicantNotificationAt(data.postId, data.recruiterId);
+    const windowEndsAt = lastAt ? lastAt.getTime() + APPLICATION_DIGEST_WINDOW_MS : 0;
+
+    if (windowEndsAt > Date.now()) {
+        // Still inside the quiet window — fold this applicant into the digest.
+        await queueApplicationDigest(
+            { postId: data.postId, recruiterId: data.recruiterId },
+            windowEndsAt - Date.now()
+        );
+        logger.info(`Application for post ${data.postId} folded into digest (window open)`);
+        return;
+    }
+
     const { pushed } = await notifyUser({
         userId: data.recruiterId,
         fcmToken: data.recruiterFcmToken,
@@ -119,6 +158,65 @@ async function processNewApplication(data: NewApplicationData) {
     });
 
     logger.info(`Application notification stored for recruiter ${data.recruiterId} (pushed=${pushed})`);
+}
+
+/**
+ * Process the rolled-up "N more people applied" summary for one post. Counts
+ * the applications received since the recruiter was last notified, so nothing
+ * is double-counted and nothing is missed.
+ */
+async function processNewApplicationDigest(data: NewApplicationDigestData) {
+    const [post, recruiter, lastAt] = await Promise.all([
+        prisma.post.findUnique({
+            where: { id: data.postId },
+            select: { id: true, title: true, is_active: true, is_recruiting: true, endDate: true },
+        }),
+        prisma.user.findUnique({ where: { id: data.recruiterId }, select: { fcm_token: true } }),
+        lastApplicantNotificationAt(data.postId, data.recruiterId),
+    ]);
+
+    if (!post) {
+        logger.warn(`Application digest skipped — post ${data.postId} no longer exists`);
+        return;
+    }
+    // Stop once the post is no longer taking candidates.
+    if (!post.is_active || !post.is_recruiting || post.endDate <= new Date()) {
+        logger.info(`Application digest skipped — post ${post.id} is closed to applicants`);
+        return;
+    }
+
+    const since = lastAt ?? new Date(Date.now() - APPLICATION_DIGEST_WINDOW_MS);
+    const [count, latest] = await Promise.all([
+        prisma.postApplied.count({ where: { postId: post.id, createdAt: { gt: since } } }),
+        prisma.postApplied.findFirst({
+            where: { postId: post.id, createdAt: { gt: since } },
+            orderBy: { createdAt: "desc" },
+            select: { user: { select: { name: true } } },
+        }),
+    ]);
+
+    if (count === 0) {
+        logger.info(`Application digest skipped — no new applicants for post ${post.id}`);
+        return;
+    }
+
+    const applicantName = latest?.user?.name || "Someone";
+    const body =
+        count === 1
+            ? `${applicantName} applied for "${post.title}"`
+            : `${count} more people applied for "${post.title}"`;
+
+    const { pushed } = await notifyUser({
+        userId: data.recruiterId,
+        fcmToken: recruiter?.fcm_token,
+        type: NotificationType.NEW_APPLICATION_DIGEST,
+        title: count === 1 ? "📋 New Application!" : `📋 ${count} new applications`,
+        body,
+        postId: post.id,
+        data: { count },
+    });
+
+    logger.info(`Application digest sent to recruiter ${data.recruiterId} for post ${post.id} (count=${count}, pushed=${pushed})`);
 }
 
 /**
@@ -499,6 +597,10 @@ export function startNotificationWorker() {
 
                     case NotificationType.NEW_APPLICATION:
                         await processNewApplication(job.data as NewApplicationData);
+                        break;
+
+                    case NotificationType.NEW_APPLICATION_DIGEST:
+                        await processNewApplicationDigest(job.data as NewApplicationDigestData);
                         break;
 
                     case NotificationType.APPLICATION_STATUS:
