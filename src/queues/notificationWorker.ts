@@ -29,6 +29,7 @@ import {
     scheduleDailyMaintenance,
 } from "./notificationQueue";
 import { prisma } from "../lib/prisma";
+import { cleanupExpiredTokens } from "../utils/tokenUtils";
 
 
 let notificationWorker: Worker | null = null;
@@ -531,6 +532,16 @@ async function processInactiveReminder(data: InactiveReminderData) {
  */
 async function processDailyMaintenance() {
     await purgeExpiredNotifications();
+
+    // Refresh tokens rotate on every use, so each active device leaves a
+    // revoked row behind every few minutes. Drop the revoked and expired ones
+    // nightly, otherwise the table grows without bound.
+    try {
+        const removed = await cleanupExpiredTokens();
+        if (removed > 0) logger.info(`Purged ${removed} expired/revoked refresh tokens`);
+    } catch (err) {
+        logger.error("Refresh token cleanup failed", { error: (err as Error)?.message });
+    }
 
     const now = new Date();
     const windowStart = new Date(now.getTime() - 48 * 60 * 60 * 1000);
