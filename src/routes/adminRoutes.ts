@@ -36,6 +36,7 @@ import {
   deleteTestimonial,
 } from "../controller/websiteController";
 import { adminListThreads, adminThreadMessages } from "../controller/chatController";
+import { getAnalytics } from "../controller/analyticsController";
 import {
   getReferrals,
   createReferral,
@@ -87,6 +88,9 @@ router.delete("/clients/:id", deleteClient);
 router.post("/testimonials", createTestimonial);
 router.patch("/testimonials/:id", updateTestimonial);
 router.delete("/testimonials/:id", deleteTestimonial);
+
+// Dashboard analytics
+router.get("/analytics", getAnalytics);
 
 // Chat moderation (read-only)
 router.get("/chats", adminListThreads);
