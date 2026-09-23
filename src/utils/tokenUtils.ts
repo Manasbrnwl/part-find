@@ -10,9 +10,11 @@ if (!JWT_SECRET) {
   throw new Error("JWT_SECRET environment variable is required");
 }
 
-// Token expiry configurations
-const ACCESS_TOKEN_EXPIRY = "15m"; // 15 minutes
-const REFRESH_TOKEN_EXPIRY_DAYS = 7; // 7 days
+// Token expiry configurations.
+// The app refreshes transparently on any 401, so a short access token costs
+// users nothing; the long refresh window is what keeps them signed in.
+const ACCESS_TOKEN_EXPIRY = "5m"; // 5 minutes
+const REFRESH_TOKEN_EXPIRY_DAYS = 90; // ~3 months
 
 /**
  * Generate a JWT access token
