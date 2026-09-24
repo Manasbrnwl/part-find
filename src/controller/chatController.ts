@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { Prisma } from "@prisma/client";
+import { Prisma, Status } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { emitToUser, isUserOnline } from "../lib/socket";
 import { asyncHandler, handleForbiddenError, handleNotFoundError, handleValidationError } from "../utils/errorHandler";
@@ -49,6 +49,28 @@ const threadInclude = {
 
 type ThreadRow = Prisma.ChatThreadGetPayload<{ include: typeof threadInclude }>;
 
+/**
+ * Whether the viewer may send right now, and why not.
+ *
+ * An APPROVED applicant can write freely — they don't wait for the recruiter.
+ * Anyone else (pending / rejected / withdrawn / no-show) can only reply once
+ * the recruiter has written first, which is what recruiter_started_at records.
+ * The recruiter may always open a thread with any of their applicants.
+ */
+function sendPermission(
+  thread: { applicantId: string; recruiterId: string; recruiter_started_at: Date | null; application: { status: Status | null } },
+  viewerId: string | null,
+  isOpen: boolean
+): { canSend: boolean; reason: string | null } {
+  if (!isOpen) return { canSend: false, reason: "CHAT_CLOSED" };
+  if (viewerId === thread.recruiterId) return { canSend: true, reason: null };
+  if (viewerId !== thread.applicantId) return { canSend: false, reason: "NOT_A_PARTICIPANT" };
+
+  if (thread.application.status === Status.APPROVED) return { canSend: true, reason: null };
+  if (thread.recruiter_started_at) return { canSend: true, reason: null };
+  return { canSend: false, reason: "AWAITING_RECRUITER" };
+}
+
 /** A thread is open for messaging until the post's start time. */
 export function threadOpenState(post: { startDate: Date; is_active: boolean }) {
   const now = new Date();
@@ -60,6 +82,7 @@ export function threadOpenState(post: { startDate: Date; is_active: boolean }) {
 /** Shape a thread for the API from the viewpoint of `viewerId` (admin: null). */
 function shapeThread(thread: ThreadRow, viewerId: string | null, unreadCount = 0) {
   const state = threadOpenState(thread.post);
+  const permission = sendPermission(thread, viewerId, state.isOpen);
   const myLastRead =
     viewerId === thread.applicantId
       ? thread.applicant_last_read_at
@@ -79,6 +102,10 @@ function shapeThread(thread: ThreadRow, viewerId: string | null, unreadCount = 0
     myRole: viewerId === thread.applicantId ? "APPLICANT" : viewerId === thread.recruiterId ? "RECRUITER" : "ADMIN",
     isOpen: state.isOpen,
     closedReason: state.closedReason,
+    // viewer-specific: the thread can be open while this person still may not write
+    canSendMessage: permission.canSend,
+    cannotSendReason: permission.reason,
+    recruiterStarted: thread.recruiter_started_at !== null,
     closesAt: thread.post.startDate,
     lastMessageAt: thread.last_message_at,
     lastMessagePreview: thread.last_message_preview,
@@ -152,8 +179,17 @@ export const listMyThreads = asyncHandler(async (req: Request, res: Response) =>
   const { page, limit, skip, take } = parsePagination(req, { defaultLimit: 30 });
   const status = req.query.status as string | undefined;
 
+  // A candidate only sees threads they can actually use: approved
+  // applications, or ones the recruiter has already opened. Recruiters see all
+  // of theirs. (Without this, applying to 20 gigs would show 20 empty chats.)
   const where: Prisma.ChatThreadWhereInput = {
-    OR: [{ applicantId: userId }, { recruiterId: userId }],
+    OR: [
+      {
+        applicantId: userId,
+        OR: [{ application: { status: Status.APPROVED } }, { recruiter_started_at: { not: null } }],
+      },
+      { recruiterId: userId },
+    ],
     ...(status === "open"
       ? { post: { startDate: { gt: new Date() } } }
       : status === "closed"
@@ -186,7 +222,15 @@ export const listMyThreads = asyncHandler(async (req: Request, res: Response) =>
 export const myUnreadCount = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.userId as string;
   const threads = await prisma.chatThread.findMany({
-    where: { OR: [{ applicantId: userId }, { recruiterId: userId }] },
+    where: {
+      OR: [
+        {
+          applicantId: userId,
+          OR: [{ application: { status: Status.APPROVED } }, { recruiter_started_at: { not: null } }],
+        },
+        { recruiterId: userId },
+      ],
+    },
     select: { id: true, applicantId: true, recruiterId: true, applicant_last_read_at: true, recruiter_last_read_at: true, last_message_at: true, last_sender_id: true },
   });
   // only threads where the other side spoke last can have unread messages
@@ -296,6 +340,15 @@ export const sendMessage = asyncHandler(async (req: Request, res: Response) => {
     );
   }
 
+  const permission = sendPermission(thread, userId, state.isOpen);
+  if (!permission.canSend) {
+    throw handleValidationError(
+      permission.reason === "AWAITING_RECRUITER"
+        ? "You can message the recruiter once your application is approved, or after they message you first"
+        : "You cannot send messages in this chat"
+    );
+  }
+
   const message = await deliverMessage(thread, userId, body);
   res.status(201).json({ success: true, data: message });
 });
@@ -336,6 +389,8 @@ async function deliverMessage(thread: ThreadRow, senderId: string, body: string)
       where: { id: thread.id },
       data: {
         last_message_at: now,
+        // first recruiter message unlocks replies for a not-yet-approved applicant
+        ...(!isApplicant && !thread.recruiter_started_at ? { recruiter_started_at: now } : {}),
         last_message_preview: body.length > PREVIEW_LENGTH ? `${body.slice(0, PREVIEW_LENGTH - 1)}…` : body,
         last_sender_id: senderId,
         message_count: { increment: 1 },
