@@ -177,6 +177,10 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
       throw handleValidationError("Selected post type does not exist or is inactive");
     }
   }
+  if (!paymentDate || Number.isNaN(new Date(paymentDate).getTime())) {
+    throw handleValidationError("A valid payment date is required");
+  }
+
   if (!startDate || !endDate) {
     throw handleValidationError("Start date and end date are required");
   }
