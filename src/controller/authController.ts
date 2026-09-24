@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
@@ -77,7 +78,10 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
   const identifier = email ? email.toLowerCase() : phone_number;
   const isEmail = !!email;
 
-  // Check if user exists
+  // Look the account up regardless of is_active: someone who deleted their
+  // account still owns the email/phone (both are unique), so creating a second
+  // row would hit the unique constraint and surface as "already exists".
+  // A deleted account is reactivated below instead.
   let user = await prisma.user.findFirst({
     select: {
       id: true,
@@ -87,6 +91,7 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
       phone_number: true,
       address: true,
       role: true,
+      is_active: true,
       recruiter_company_name: true,
       recruiter_type: true,
       recruiter_company_address: true,
@@ -98,7 +103,6 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
       },
     },
     where: {
-      is_active: true,
       email: isEmail ? identifier : undefined,
       phone_number: !isEmail ? identifier : undefined,
     },
@@ -116,11 +120,24 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
   const otpExpiry = calculateOTPExpiry();
 
   if (user) {
-    // Existing user - update with new OTP
+    // Existing user - update with new OTP. A previously deleted account comes
+    // back to life here: its profile was already wiped on deletion, so it
+    // behaves like a fresh signup (isNewUser is derived from the empty
+    // profile) and may pick a different role on the way back in.
+    const reactivating = user.is_active === false;
     await prisma.user.update({
       where: { id: user.id },
-      data: { otp, otp_exp: otpExpiry },
+      data: {
+        otp,
+        otp_exp: otpExpiry,
+        ...(reactivating ? { is_active: true, ...(role ? { role } : {}) } : {}),
+      },
     });
+    if (reactivating) {
+      logger.info("Reactivating a previously deleted account", { userId: user.id, role });
+      user.is_active = true;
+      if (role) user.role = role;
+    }
   } else {
     // New user - create temporary user record
     const newUser = await prisma.user.create({
@@ -140,6 +157,7 @@ export const requestOTP = asyncHandler(async (req: Request, res: Response) => {
         phone_number: true,
         address: true,
         role: true,
+        is_active: true,
         recruiter_company_name: true,
         recruiter_type: true,
         recruiter_company_address: true,
@@ -386,6 +404,8 @@ export const loginGoogleUser = asyncHandler(
         });
       }
 
+      // Same as the OTP path: a deleted account is reactivated rather than
+      // left inactive (which would 401 on every request after login).
       let user = await prisma.user.findUnique({
         where: { email },
       });
@@ -399,6 +419,14 @@ export const loginGoogleUser = asyncHandler(
             role: (requestedRole || "USER") as any,
           },
         });
+      } else if (!user.is_active) {
+        // Previously deleted account signing back in: its data was wiped on
+        // deletion, so bring it back as a blank slate with the chosen role.
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { is_active: true, ...(requestedRole ? { role: requestedRole as any } : {}) },
+        });
+        logger.info("Reactivating a previously deleted account (Google)", { userId: user.id });
       } else if (
         requestedRole &&
         requestedRole !== user.role &&
@@ -641,13 +669,50 @@ export const deleteProfile = asyncHandler(
       where: { user_id: userId },
     });
 
-    // Soft delete user - set is_active to false
+    // Sign the account out everywhere — otherwise a refresh token issued
+    // before deletion stays usable for its full lifetime.
+    await revokeAllUserTokens(userId);
+
+    // Soft delete: keep the row (ratings and certificates issued to other
+    // people reference it) but scrub everything personal. The email is kept
+    // deliberately: it is the login identity, so the person can come back and
+    // the account is reactivated instead of colliding with the unique index.
     const deletedUser = await prisma.user.update({
       where: { id: userId },
       data: {
         is_active: false,
+        // sessions / devices
         jwt_token: null,
         fcm_token: null,
+        otp: null,
+        otp_exp: null,
+        change_otp: null,
+        change_otp_exp: null,
+        pending_change: Prisma.DbNull,
+        // personal details
+        name: null,
+        phone_number: null,
+        date_of_birth: null,
+        gender: null,
+        height: null,
+        weight: null,
+        english_level: null,
+        address: null,
+        state: null,
+        country: null,
+        skills: [],
+        experience: [],
+        education: [],
+        intro_video_link: null,
+        // KYC
+        aadhaar_number: null,
+        aadhaar_image: null,
+        // recruiter details
+        recruiter_company_name: null,
+        recruiter_type: null,
+        recruiter_company_registration: null,
+        recruiter_company_address: null,
+        recruiter_company_logo: null,
       },
     });
 
