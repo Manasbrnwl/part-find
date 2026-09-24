@@ -1,14 +1,25 @@
 openapi: 3.0.3
 info:
   title: Part-Find API
-  description: Job platform API for connecting users with gig work opportunities
-  version: 1.0.0
+  description: >-
+    Job platform API for connecting users with gig work opportunities.
+
+
+    Most endpoints live under **/api/v1**. **/api/v2** exists only for
+    endpoints whose response shape changed in a way older app builds could not
+    tolerate — today that is the candidate job feed, which gained the
+    recruiter's profile. v1 is frozen for the apps already in the wild.
+  version: 1.1.0
   contact:
     email: official@part-find.com
 
 servers:
+  - url: https://api.part-find.org
+    description: Production
+  - url: https://dev-api.part-find.org
+    description: Dev / staging
   - url: http://localhost:4000
-    description: Development server
+    description: Local
 
 tags:
   - name: Auth
@@ -31,6 +42,13 @@ tags:
     description: Admin-only management endpoints (post approval, referral codes, etc.)
   - name: Referral
     description: Referral code validation and administration
+  - name: Chat
+    description: >-
+      Recruiter ↔ applicant chat. One thread per application, created when the
+      user applies. An APPROVED applicant may write whenever they like; any
+      other applicant may only reply after the recruiter writes first. Both
+      sides are locked out once the event starts. Live delivery is over
+      Socket.IO at /socket.io (same host, JWT in the handshake `auth.token`).
 
 components:
   securitySchemes:
@@ -40,6 +58,116 @@ components:
       bearerFormat: JWT
 
   schemas:
+    Pagination:
+      type: object
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        pages: { type: integer }
+
+    ChatParticipant:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, nullable: true }
+        email: { type: string }
+        phone_number: { type: string, nullable: true }
+        role: { type: string }
+        recruiter_company_name: { type: string, nullable: true }
+        recruiter_company_logo: { type: string, nullable: true }
+
+    ChatThread:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        postId: { type: string, format: uuid }
+        applicationId: { type: string, format: uuid }
+        applicationStatus:
+          type: string
+          enum: [PENDING, APPROVED, REJECTED, CANCELLED, NOT_PRESENT]
+        post: { type: object }
+        applicant: { $ref: '#/components/schemas/ChatParticipant' }
+        recruiter: { $ref: '#/components/schemas/ChatParticipant' }
+        otherParty: { $ref: '#/components/schemas/ChatParticipant' }
+        myRole: { type: string, enum: [APPLICANT, RECRUITER, ADMIN] }
+        isOpen:
+          type: boolean
+          description: false once the event has started (read-only for both sides)
+        closedReason:
+          type: string
+          nullable: true
+          enum: [EVENT_STARTED, POST_INACTIVE]
+        canSendMessage:
+          type: boolean
+          description: >-
+            Viewer-specific. A thread can be open while this person still may
+            not write — a not-yet-approved applicant waiting for the recruiter.
+        cannotSendReason:
+          type: string
+          nullable: true
+          enum: [AWAITING_RECRUITER, CHAT_CLOSED, NOT_A_PARTICIPANT]
+        recruiterStarted:
+          type: boolean
+          description: the recruiter has written at least once, which unlocks replies
+        closesAt: { type: string, format: date-time }
+        lastMessageAt: { type: string, format: date-time, nullable: true }
+        lastMessagePreview: { type: string, nullable: true }
+        lastSenderId: { type: string, nullable: true }
+        messageCount: { type: integer }
+        unreadCount: { type: integer }
+
+    ChatMessage:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        threadId: { type: string, format: uuid }
+        senderId: { type: string, format: uuid }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    RecruiterSummary:
+      type: object
+      description: The post owner's public profile. Contact details are never included.
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, nullable: true }
+        companyName: { type: string, nullable: true }
+        companyLogo: { type: string, nullable: true }
+        companyType: { type: string, nullable: true }
+        companyAddress: { type: string, nullable: true }
+        memberSince: { type: string, format: date-time }
+        averageRating:
+          type: number
+          nullable: true
+          description: mean of the ratings candidates gave them, 1 decimal place
+        ratingCount: { type: integer }
+
+    PostV2:
+      type: object
+      description: A feed post as returned by /api/v2/post/get-all.
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        content: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+        state:
+          type: string
+          nullable: true
+          description: the event's state, set from `event_state` on create
+        startDate: { type: string, format: date-time }
+        endDate: { type: string, format: date-time }
+        payment: { type: number, nullable: true }
+        paymentGirls: { type: number, nullable: true }
+        paymentBoys: { type: number, nullable: true }
+        girls: { type: integer, nullable: true }
+        boys: { type: integer, nullable: true }
+        appliedFlag: { type: integer, enum: [0, 1] }
+        appliedStatus: { type: string }
+        appliedApplicants: { type: integer }
+        savedFlag: { type: integer, enum: [0, 1] }
+        recruiter: { $ref: '#/components/schemas/RecruiterSummary' }
+
     User:
       type: object
       properties:
@@ -312,7 +440,7 @@ security:
 
 paths:
   # App Configuration
-  /version:
+  /api/v1/version:
     get:
       tags: [Master]
       summary: Get application version configuration
@@ -340,7 +468,7 @@ paths:
                     $ref: '#/components/schemas/AppVersion'
 
   # Auth Routes
-  /auth/request-otp:
+  /api/v1/auth/request-otp:
     post:
       tags: [Auth]
       summary: Request OTP for login / signup
@@ -376,7 +504,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/SuccessResponse'
 
-  /auth/verify-otp:
+  /api/v1/auth/verify-otp:
     post:
       tags: [Auth]
       summary: Verify OTP and login
@@ -430,7 +558,7 @@ paths:
                           user:
                             $ref: '#/components/schemas/User'
 
-  /auth/firebase-signin:
+  /api/v1/auth/firebase-signin:
     post:
       tags: [Auth]
       summary: Sign in with Firebase/Google
@@ -457,7 +585,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/SuccessResponse'
 
-  /auth/refresh:
+  /api/v1/auth/refresh:
     post:
       tags: [Auth]
       summary: Refresh access and refresh tokens
@@ -494,7 +622,7 @@ paths:
         '401':
           description: Invalid, expired, or revoked refresh token
 
-  /auth/logout:
+  /api/v1/auth/logout:
     post:
       tags: [Auth]
       summary: Logout user
@@ -521,7 +649,7 @@ paths:
         '401':
           description: Unauthorized
 
-  /auth/logout-all:
+  /api/v1/auth/logout-all:
     post:
       tags: [Auth]
       summary: Logout from all devices
@@ -545,7 +673,7 @@ paths:
         '401':
           description: Unauthorized
 
-  /auth/delete-profile:
+  /api/v1/auth/delete-profile:
     delete:
       tags: [Auth]
       summary: Delete user account
@@ -554,7 +682,7 @@ paths:
           description: Account deleted
 
   # User Routes
-  /users/profile:
+  /api/v1/users/profile:
     get:
       tags: [Users]
       summary: Get current user profile
@@ -614,7 +742,7 @@ paths:
         '200':
           description: Profile updated
 
-  /users/recruiter-profile:
+  /api/v1/users/recruiter-profile:
     get:
       tags: [Users]
       summary: Get recruiter profile
@@ -632,6 +760,15 @@ paths:
               properties:
                 company_name:
                   type: string
+                event_state:
+                  type: string
+                  maxLength: 100
+                  description: >-
+                    Indian state the event takes place in. Stored on the post as
+                    `state`; `state` is accepted as an alias. Trimmed; blank is
+                    stored as null. On update the value is only touched when the
+                    key is present.
+                  example: Maharashtra
                 recruiter_type:
                   type: string
                 company_registration:
@@ -645,7 +782,7 @@ paths:
         '200':
           description: Recruiter profile updated
 
-  /users:
+  /api/v1/users:
     get:
       tags: [Users]
       summary: Get all users (Admin only)
@@ -653,7 +790,7 @@ paths:
         '200':
           description: List of users
 
-  /users/fcm-token:
+  /api/v1/users/fcm-token:
     put:
       tags: [Users]
       summary: Update FCM token for push notifications
@@ -682,7 +819,7 @@ paths:
           description: Unauthorized
 
   # Aadhaar (KYC)
-  /users/aadhaar:
+  /api/v1/users/aadhaar:
     put:
       tags: [Users]
       summary: Submit / update the caller's Aadhaar (KYC)
@@ -728,7 +865,7 @@ paths:
         '401':
           description: Unauthorized
 
-  /users/aadhaar/image:
+  /api/v1/users/aadhaar/image:
     get:
       tags: [Users]
       summary: Get the caller's own Aadhaar image
@@ -746,7 +883,7 @@ paths:
         '404':
           description: No Aadhaar image on file
 
-  /users/aadhaar/image/{userId}:
+  /api/v1/users/aadhaar/image/{userId}:
     get:
       tags: [Admin]
       summary: Get any user's Aadhaar image (Admin only)
@@ -773,7 +910,7 @@ paths:
           description: No Aadhaar image on file
 
   # Post Routes
-  /post:
+  /api/v1/post:
     post:
       tags: [Posts]
       summary: Create a new job post (Recruiter/Admin)
@@ -823,6 +960,15 @@ paths:
                   format: date-time
                 company_name:
                   type: string
+                event_state:
+                  type: string
+                  maxLength: 100
+                  description: >-
+                    Indian state the event takes place in. Stored on the post as
+                    `state`; `state` is accepted as an alias. Trimmed; blank is
+                    stored as null. On update the value is only touched when the
+                    key is present.
+                  example: Maharashtra
                 categories:
                   type: string
                   description: Comma-separated category IDs
@@ -840,7 +986,7 @@ paths:
         '201':
           description: Post created
 
-  /post/types:
+  /api/v1/post/types:
     get:
       tags: [Posts]
       summary: List employment/post types
@@ -860,7 +1006,7 @@ paths:
         '200':
           description: List of post types
 
-  /post/update/{id}:
+  /api/v1/post/update/{id}:
     put:
       tags: [Posts]
       summary: Update a job post
@@ -879,7 +1025,7 @@ paths:
         '200':
           description: Post updated
 
-  /post/delete/{id}:
+  /api/v1/post/delete/{id}:
     delete:
       tags: [Posts]
       summary: Delete a job post
@@ -893,7 +1039,7 @@ paths:
         '200':
           description: Post deleted
 
-  /post/get-all:
+  /api/v1/post/get-all:
     get:
       tags: [Posts]
       summary: Get all active posts (User)
@@ -918,7 +1064,7 @@ paths:
         '200':
           description: List of posts (each includes its `type` object)
 
-  /post/nearby:
+  /api/v1/post/nearby:
     get:
       tags: [Posts]
       summary: Get nearby posts based on location
@@ -987,7 +1133,7 @@ paths:
                       searchRadius:
                         type: number
 
-  /post/{id}:
+  /api/v1/post/{id}:
     get:
       tags: [Posts]
       summary: Get post by ID
@@ -1001,7 +1147,7 @@ paths:
         '200':
           description: Post details
 
-  /post/apply/{id}:
+  /api/v1/post/apply/{id}:
     post:
       tags: [Posts]
       summary: Apply to a job post
@@ -1024,7 +1170,7 @@ paths:
         '201':
           description: Application submitted
 
-  /post/applied/get-all:
+  /api/v1/post/applied/get-all:
     get:
       tags: [Posts]
       summary: Get all posts user has applied to
@@ -1032,7 +1178,7 @@ paths:
         '200':
           description: List of applied posts
 
-  /post/get-all-post:
+  /api/v1/post/get-all-post:
     get:
       tags: [Posts]
       summary: Get all posts by recruiter (Recruiter only)
@@ -1040,7 +1186,7 @@ paths:
         '200':
           description: List of recruiter's posts
 
-  /post/list/{id}:
+  /api/v1/post/list/{id}:
     post:
       tags: [Posts]
       summary: Get applicants for a post (Recruiter/Admin)
@@ -1060,7 +1206,7 @@ paths:
             Applicants for the post, including approved, rejected and withdrawn
             lists (withdrawn entries include the withdrawal reason/remark).
 
-  /post/update-status/{id}:
+  /api/v1/post/update-status/{id}:
     put:
       tags: [Posts]
       summary: Update applicant status (Recruiter only)
@@ -1094,7 +1240,7 @@ paths:
         '200':
           description: Status updated
 
-  /post/recruitment/{id}:
+  /api/v1/post/recruitment/{id}:
     put:
       tags: [Posts]
       summary: Open or close recruitment for a post (Recruiter owner / Admin)
@@ -1129,7 +1275,7 @@ paths:
         '404':
           description: Post not found
 
-  /post/attendance/{postId}:
+  /api/v1/post/attendance/{postId}:
     put:
       tags: [Posts]
       summary: Bulk mark applicants as attended (Recruiter owner / Admin)
@@ -1174,7 +1320,7 @@ paths:
         '404':
           description: Post not found
 
-  /post/save/{postId}:
+  /api/v1/post/save/{postId}:
     post:
       tags: [Posts]
       summary: Save a post
@@ -1188,7 +1334,7 @@ paths:
         '200':
           description: Post saved
 
-  /post/unsave/{postId}:
+  /api/v1/post/unsave/{postId}:
     post:
       tags: [Posts]
       summary: Un-save a post
@@ -1202,7 +1348,7 @@ paths:
         '200':
           description: Post unsaved
 
-  /post/save/get-all:
+  /api/v1/post/save/get-all:
     get:
       tags: [Posts]
       summary: Get all saved posts
@@ -1210,7 +1356,7 @@ paths:
         '200':
           description: List of saved posts
 
-  /post/cancel-application/{postId}:
+  /api/v1/post/cancel-application/{postId}:
     post:
       tags: [Posts]
       summary: Cancel a job application
@@ -1238,7 +1384,7 @@ paths:
                 $ref: '#/components/schemas/SuccessResponse'
 
   # Rating Routes
-  /rating/user/{userId}:
+  /api/v1/rating/user/{userId}:
     get:
       tags: [Ratings]
       summary: Get all ratings for a user
@@ -1282,7 +1428,7 @@ paths:
                       totalRatings:
                         type: integer
 
-  /rating/average/{userId}:
+  /api/v1/rating/average/{userId}:
     get:
       tags: [Ratings]
       summary: Get average rating for a user
@@ -1310,7 +1456,7 @@ paths:
                       totalRatings:
                         type: integer
 
-  /rating/job/{postId}:
+  /api/v1/rating/job/{postId}:
     get:
       tags: [Ratings]
       summary: Get all ratings for a job (Recruiter only)
@@ -1324,7 +1470,7 @@ paths:
         '200':
           description: Job ratings
 
-  /rating/recruiter/{postId}:
+  /api/v1/rating/recruiter/{postId}:
     post:
       tags: [Ratings]
       summary: Submit a rating for a recruiter (User only)
@@ -1353,7 +1499,7 @@ paths:
         '201':
           description: Recruiter rating submitted
 
-  /rating/recruiter/{recruiterId}:
+  /api/v1/rating/recruiter/{recruiterId}:
     get:
       tags: [Ratings]
       summary: Get all ratings for a recruiter
@@ -1397,7 +1543,7 @@ paths:
                       totalRatings:
                         type: integer
 
-  /rating/recruiter/average/{recruiterId}:
+  /api/v1/rating/recruiter/average/{recruiterId}:
     get:
       tags: [Ratings]
       summary: Get average rating for a recruiter
@@ -1426,7 +1572,7 @@ paths:
                         type: integer
 
   # Notification Routes
-  /notifications:
+  /api/v1/notifications:
     get:
       tags: [Notifications]
       summary: Get my notification feed
@@ -1486,7 +1632,7 @@ paths:
         '401':
           description: Unauthorized
 
-  /notifications/unread-count:
+  /api/v1/notifications/unread-count:
     get:
       tags: [Notifications]
       summary: Get my unread notification count
@@ -1509,7 +1655,7 @@ paths:
         '401':
           description: Unauthorized
 
-  /notifications/read-all:
+  /api/v1/notifications/read-all:
     patch:
       tags: [Notifications]
       summary: Mark all my notifications as read
@@ -1523,7 +1669,7 @@ paths:
         '401':
           description: Unauthorized
 
-  /notifications/{id}/read:
+  /api/v1/notifications/{id}/read:
     patch:
       tags: [Notifications]
       summary: Mark one notification as read
@@ -1546,7 +1692,7 @@ paths:
         '404':
           description: Notification not found (or not yours)
 
-  /notifications/{id}:
+  /api/v1/notifications/{id}:
     delete:
       tags: [Notifications]
       summary: Delete one of my notifications
@@ -1564,7 +1710,7 @@ paths:
         '404':
           description: Notification not found (or not yours)
 
-  /notifications/test:
+  /api/v1/notifications/test:
     post:
       tags: [Notifications]
       summary: Send a test push notification
@@ -1587,7 +1733,7 @@ paths:
           description: Failed to send notification (invalid/expired token)
 
   # Master Routes
-  /master/categories:
+  /api/v1/master/categories:
     get:
       tags: [Master]
       summary: Get all job categories
@@ -1615,7 +1761,7 @@ paths:
                           type: string
 
   # Rating Routes
-  /rating/{postId}/{userId}:
+  /api/v1/rating/{postId}/{userId}:
     post:
       tags: [Ratings]
       summary: Submit a rating for a user (Recruiter only)
@@ -1668,7 +1814,7 @@ paths:
           description: Rating already submitted for this post/user
 
   # Certificate Routes
-  /certificate/my-certificates:
+  /api/v1/certificate/my-certificates:
     get:
       tags: [Certificates]
       summary: Get all certificates earned by the authenticated user
@@ -1718,7 +1864,7 @@ paths:
         '401':
           description: Unauthorized
 
-  /certificate/download/{id}:
+  /api/v1/certificate/download/{id}:
     get:
       tags: [Certificates]
       summary: Download a certificate as PDF
@@ -1749,7 +1895,7 @@ paths:
           description: Certificate not found
 
   # Admin - Post moderation
-  /admin/posts:
+  /api/v1/admin/posts:
     get:
       tags: [Admin]
       summary: List all job posts (Admin only)
@@ -1776,7 +1922,7 @@ paths:
         '403':
           description: Forbidden - admin only
 
-  /admin/posts/{id}/applicants:
+  /api/v1/admin/posts/{id}/applicants:
     get:
       tags: [Admin]
       summary: Per-post applicant breakdown (Admin only)
@@ -1798,7 +1944,7 @@ paths:
         '404':
           description: Post not found
 
-  /admin/post-types:
+  /api/v1/admin/post-types:
     post:
       tags: [Admin]
       summary: Create a post/employment type (Admin only)
@@ -1818,7 +1964,7 @@ paths:
         '201':
           description: Post type created
 
-  /admin/post-types/{id}:
+  /api/v1/admin/post-types/{id}:
     patch:
       tags: [Admin]
       summary: Update a post type (Admin only)
@@ -1870,7 +2016,7 @@ paths:
         '404':
           description: Post type not found
 
-  /admin/posts/{id}/approval:
+  /api/v1/admin/posts/{id}/approval:
     patch:
       tags: [Admin]
       summary: Approve or reject a job post (Admin only)
@@ -1920,7 +2066,7 @@ paths:
           description: Post not found
 
   # Referral codes
-  /referral/validate/{code}:
+  /api/v1/referral/validate/{code}:
     get:
       tags: [Referral]
       summary: Validate a referral code (public)
@@ -1956,7 +2102,7 @@ paths:
                             nullable: true
                             description: Owner's name (null if the code is invalid)
 
-  /admin/referrals:
+  /api/v1/admin/referrals:
     get:
       tags: [Referral]
       summary: List all referral codes (Admin only)
@@ -2022,7 +2168,7 @@ paths:
         '403':
           description: Forbidden - admin only
 
-  /admin/referrals/{id}:
+  /api/v1/admin/referrals/{id}:
     patch:
       tags: [Referral]
       summary: Update a referral code (Admin only)
@@ -2079,3 +2225,447 @@ paths:
           description: Forbidden - admin only
         '404':
           description: Referral code not found
+
+  # ─────────────────────────── Chat ───────────────────────────
+  /api/v1/chat/threads:
+    get:
+      tags: [Chat]
+      summary: My conversations
+      description: >-
+        Threads the caller takes part in, newest activity first. A candidate
+        only sees threads they can actually use (application APPROVED, or the
+        recruiter has written); a recruiter sees all of theirs.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 30, maximum: 100 }
+        - in: query
+          name: status
+          schema: { type: string, enum: [open, closed] }
+          description: open = the event has not started yet
+      responses:
+        '200':
+          description: Threads
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ChatThread' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '401': { description: Unauthorized }
+
+  /api/v1/chat/unread-count:
+    get:
+      tags: [Chat]
+      summary: Unread message badge
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Totals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      total: { type: integer, description: unread messages }
+                      threads: { type: integer, description: threads containing them }
+        '401': { description: Unauthorized }
+
+  /api/v1/chat/threads/lookup:
+    get:
+      tags: [Chat]
+      summary: Find (or open) the thread for a post
+      description: >-
+        The applicant passes only postId; the recruiter also passes
+        applicantId. Creates the thread if the application predates the chat
+        feature.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: postId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: applicantId
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Thread
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/ChatThread' }
+        '403': { description: Not a participant }
+        '404': { description: No application for that post }
+
+  /api/v1/chat/threads/by-application/{applicationId}:
+    get:
+      tags: [Chat]
+      summary: Find (or open) the thread for an application
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: applicationId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Thread
+        '403': { description: Not a participant }
+        '404': { description: Application not found }
+
+  /api/v1/chat/threads/{id}:
+    get:
+      tags: [Chat]
+      summary: One thread
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Thread
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/ChatThread' }
+        '403': { description: Not a participant }
+        '404': { description: Chat not found }
+
+  /api/v1/chat/threads/{id}/messages:
+    get:
+      tags: [Chat]
+      summary: Messages in a thread
+      description: >-
+        Newest-first pages keyed on `before`; the response is chronological.
+        Opening a page marks the thread read for the caller.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: before
+          schema: { type: string, format: date-time }
+          description: pass `nextBefore` from the previous page to load older history
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50, maximum: 100 }
+      responses:
+        '200':
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      thread: { $ref: '#/components/schemas/ChatThread' }
+                      messages:
+                        type: array
+                        items: { $ref: '#/components/schemas/ChatMessage' }
+                      hasMore: { type: boolean }
+                      nextBefore: { type: string, format: date-time, nullable: true }
+        '403': { description: Not a participant }
+    post:
+      tags: [Chat]
+      summary: Send a message
+      description: >-
+        Rejected with 400 when the event has already started, or when the
+        caller is an applicant who is neither APPROVED nor has been written to
+        by the recruiter (see `canSendMessage` on the thread).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body:
+                  type: string
+                  maxLength: 2000
+      responses:
+        '201':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/ChatMessage' }
+        '400': { description: Empty, too long, chat closed, or not allowed to write yet }
+        '403': { description: Not a participant }
+
+  /api/v1/chat/threads/{id}/read:
+    post:
+      tags: [Chat]
+      summary: Mark a thread read
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Marked read }
+        '403': { description: Not a participant }
+
+  # ─────────────────────────── Admin ───────────────────────────
+  /api/v1/admin/analytics:
+    get:
+      tags: [Admin]
+      summary: Dashboard analytics
+      description: >-
+        Everything the admin dashboard shows, for the selected window and the
+        window immediately before it (so each number can be shown with a
+        change). Also carries filter-independent platform totals.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: days
+          schema: { type: integer, enum: [7, 30, 90], default: 7 }
+      responses:
+        '200':
+          description: Analytics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      window:
+                        type: object
+                        properties:
+                          days: { type: integer }
+                          from: { type: string, format: date-time }
+                          to: { type: string, format: date-time }
+                      people:
+                        type: object
+                        description: newUsers, newRecruiters, newTotal, change{users,recruiters}, activeUsers, referralSignups
+                      posts:
+                        type: object
+                        description: created, change, live, completed, pendingApproval
+                      applications:
+                        type: object
+                        description: >-
+                          total, pending, approved, rejected, withdrawn,
+                          notPresent, change, attended, perPost, acceptanceRate
+                      engagement:
+                        type: object
+                        description: chatThreads, chatMessages, certificatesIssued
+                      needsAttention:
+                        type: object
+                        description: postsPendingApproval, flaggedPending, applicationsPending
+                      totals:
+                        type: object
+                        description: all-time users, recruiters, posts, applications
+                      series:
+                        type: object
+                        description: >-
+                          per-day counts for the window: signups, userSignups,
+                          recruiterSignups, posts, applications
+                      topPosts: { type: array, items: { type: object } }
+                      topRecruiters: { type: array, items: { type: object } }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden - admin only }
+
+  /api/v1/admin/users/{id}:
+    get:
+      tags: [Admin]
+      summary: One user's full profile
+      description: >-
+        The same projection the users list returns, for a single account — so
+        a profile can be opened from a post's applicant list, a report or a
+        chat without searching the list for them.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: User
+        '403': { description: Forbidden - admin only }
+        '404': { description: User not found }
+
+  /api/v1/admin/chats:
+    get:
+      tags: [Admin]
+      summary: Chat threads (read-only moderation)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, maximum: 100 }
+        - in: query
+          name: search
+          schema: { type: string }
+          description: post title, applicant or recruiter name/email/company
+        - in: query
+          name: status
+          schema: { type: string, enum: [open, closed] }
+      responses:
+        '200': { description: Threads with pagination and counts }
+        '403': { description: Forbidden - admin only }
+
+  /api/v1/admin/chats/{id}/messages:
+    get:
+      tags: [Admin]
+      summary: A whole conversation (read-only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Thread and its messages, chronological }
+        '403': { description: Forbidden - admin only }
+        '404': { description: Chat not found }
+
+  # ─────────────────────────── API v2 ───────────────────────────
+  /api/v2/post/get-all:
+    get:
+      tags: [Posts]
+      summary: Candidate job feed (v2 — includes recruiter details)
+      description: >-
+        Same filters, paging and per-post fields as
+        GET /api/v1/post/get-all, plus the event `state` and a `recruiter`
+        block: company name, logo, type, address, member-since, and their
+        average rating with the number of ratings.
+
+
+        Contact details are deliberately excluded — candidates reach a
+        recruiter through chat once approved, so the feed cannot be scraped for
+        contacts. v1 is unchanged for older app builds.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 10 }
+        - in: query
+          name: type_id
+          schema: { type: integer }
+        - in: query
+          name: state
+          schema: { type: string }
+          description: only events in this state
+      responses:
+        '200':
+          description: Posts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      posts:
+                        type: array
+                        items: { $ref: '#/components/schemas/PostV2' }
+                      totalPages: { type: integer }
+                      currentPage: { type: integer }
+                      totalPosts: { type: integer }
+        '401': { description: Unauthorized }
+
+  /api/v2/post:
+    post:
+      tags: [Posts]
+      summary: Create a job post (v2 path)
+      description: >-
+        Identical behaviour to POST /api/v1/post — same validation, approval
+        flow and notifications — on the tidier v2 path. Accepts `event_state`.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, content, startDate, endDate, paymentDate]
+              properties:
+                title: { type: string }
+                content: { type: string }
+                startDate: { type: string, format: date-time }
+                endDate: { type: string, format: date-time }
+                paymentDate: { type: string, format: date-time }
+                event_state:
+                  type: string
+                  maxLength: 100
+                  example: Maharashtra
+      responses:
+        '201': { description: Post created, pending admin approval }
+        '400': { description: Validation error }
+        '403': { description: Forbidden - recruiter/admin only }
+
+  /api/v2/post/{id}:
+    put:
+      tags: [Posts]
+      summary: Update a job post (v2 path)
+      description: >-
+        Identical behaviour to PUT /api/v1/post/update/{id}. `event_state` is
+        only written when the key is present in the body.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                event_state: { type: string, maxLength: 100 }
+      responses:
+        '200': { description: Post updated }
+        '403': { description: Not your post }
+        '404': { description: Post not found }
