@@ -157,6 +157,8 @@ model Post {
   // Closed posts are hidden from the discovery feeds and reject new applications.
   is_recruiting  Boolean        @default(true)
   company_name   String?
+  // Indian state the event takes place in (sent by the app as `event_state`).
+  state          String?        @db.VarChar(100)
   latitude       Float?
   longitude      Float?
   category       String?
@@ -186,6 +188,7 @@ model Post {
   chatThreads    ChatThread[]
 
   @@unique([userId, title, startDate], map: "post_unique")
+  @@index([state])
 }
 
 model postApplied {

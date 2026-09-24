@@ -19,6 +19,7 @@ import legalRoutes from "./routes/legalRoutes";
 import referralRoutes from "./routes/referralRoutes";
 import imageRoutes from "./routes/imageRoutes";
 import chatRoutes from "./routes/chatRoutes";
+import v2Routes from "./routes/v2";
 import http from "http";
 import { initSocket } from "./lib/socket";
 import { startNotificationWorker } from "./queues/notificationWorker";
@@ -75,6 +76,10 @@ app.use("/api/v1/legal", legalRoutes);
 app.use("/api/v1/referral", referralRoutes);
 // Recruiter ↔ applicant chat (REST; live updates over Socket.IO at /socket.io)
 app.use("/api/v1/chat", chatRoutes);
+
+// ── API v2 ────────────────────────────────────────────────────────────────
+// Only endpoints whose response shape changed; v1 above stays as it is.
+app.use("/api/v2", v2Routes);
 
 // Image serving — proxies profile/recruiter images from S3 (or local disk in
 // fallback mode). Same /api/v1/images/... URLs as before, so clients are unchanged.

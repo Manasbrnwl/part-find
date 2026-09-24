@@ -27,6 +27,16 @@ const { sendEmailNotification } = require("../../utils/notification/email.notifi
 const router = express.Router();
 
 /**
+ * Indian state the event runs in. Trimmed and length-capped; blank becomes
+ * null so "not set" has a single representation.
+ */
+function normalizeEventState(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed.slice(0, 100) : null;
+}
+
+/**
  * Email the Part Find team (official@part-find.org, override via ADMIN_NOTIFY_EMAIL)
  * when a recruiter creates a post that needs approval. Fire-and-forget.
  */
@@ -128,6 +138,10 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
     pay_period,
     latitude,
     longitude,
+    // The app sends the event's state as `event_state`; `state` is accepted
+    // too so other clients aren't forced into the app's naming.
+    event_state,
+    state,
   } = req.body;
   const userId = req.userId;
 
@@ -163,6 +177,10 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
       throw handleValidationError("Selected post type does not exist or is inactive");
     }
   }
+  if (!paymentDate || Number.isNaN(new Date(paymentDate).getTime())) {
+    throw handleValidationError("A valid payment date is required");
+  }
+
   if (!startDate || !endDate) {
     throw handleValidationError("Start date and end date are required");
   }
@@ -215,6 +233,7 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
       paymentDate: new Date(paymentDate),
       dressCode: dressCode || null,
       company_name,
+      state: normalizeEventState(event_state ?? state),
       category,
       type_id: typeId,
       pay_period: payPeriod as any,
@@ -286,6 +305,10 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
     pay_period,
     latitude,
     longitude,
+    // The app sends the event's state as `event_state`; `state` is accepted
+    // too so other clients aren't forced into the app's naming.
+    event_state,
+    state,
   } = req.body;
 
   if (!id) {
@@ -364,6 +387,10 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
       paymentBoys: paymentBoys !== undefined ? Number(paymentBoys) : post.paymentBoys,
       dressCode: dressCode !== undefined ? dressCode : post.dressCode,
       company_name,
+      // only touched when the caller actually sent it
+      ...(event_state !== undefined || state !== undefined
+        ? { state: normalizeEventState(event_state ?? state) }
+        : {}),
       category: category || post.category,
       ...(typeIdUpdate !== undefined && { type_id: typeIdUpdate }),
       ...(payPeriodUpdate !== undefined && { pay_period: payPeriodUpdate as any }),
@@ -629,6 +656,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
         requirement: true,
         total: true,
         location: true,
+        state: true,
         payment: true,
         paymentGirls: true,
         paymentBoys: true,
