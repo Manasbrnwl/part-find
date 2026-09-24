@@ -486,6 +486,10 @@ model ChatThread {
   applicant_last_read_at DateTime?
   recruiter_last_read_at DateTime?
 
+  // Set the first time the recruiter writes. An applicant who is not APPROVED
+  // may only reply once this is set (the recruiter has to open the door).
+  recruiter_started_at DateTime?
+
   post        Post        @relation(fields: [postId], references: [id], onDelete: Cascade)
   application postApplied @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   applicant   User        @relation("ApplicantThreads", fields: [applicantId], references: [id], onDelete: Cascade)

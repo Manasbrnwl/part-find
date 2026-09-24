@@ -14,6 +14,8 @@ export enum NotificationType {
     COMPLETION_CERTIFICATE = "COMPLETION_CERTIFICATE",
     // New chat message from the other party while the recipient was offline
     CHAT_MESSAGE = "CHAT_MESSAGE",
+    // Rolled-up "N more people applied" summary for a post's recruiter
+    NEW_APPLICATION_DIGEST = "NEW_APPLICATION_DIGEST",
     OTP_EMAIL = "OTP_EMAIL",
     INACTIVE_SCAN = "INACTIVE_SCAN",
     INACTIVE_USER_REMINDER = "INACTIVE_USER_REMINDER",
@@ -78,6 +80,19 @@ export interface NewApplicationData {
     recruiterId: string;
     recruiterFcmToken?: string | null;
 }
+
+export interface NewApplicationDigestData {
+    postId: string;
+    recruiterId: string;
+}
+
+/**
+ * How long a recruiter is left alone after an applicant notification. The next
+ * applicants inside this window are rolled up into a single digest that fires
+ * when the window closes. Override with APPLICATION_DIGEST_WINDOW_MINUTES.
+ */
+export const APPLICATION_DIGEST_WINDOW_MS =
+    Math.max(1, parseInt(process.env.APPLICATION_DIGEST_WINDOW_MINUTES || "30", 10)) * 60 * 1000;
 
 export interface ApplicationStatusData {
     userId: string;
@@ -266,6 +281,23 @@ export async function queueNewApplicationNotification(data: NewApplicationData) 
         }
     );
     logger.info("Application notification queued for recruiter");
+}
+
+/**
+ * Schedule the roll-up summary for a post. The fixed jobId means repeat calls
+ * inside the same window are ignored by BullMQ, so a post gets at most one
+ * digest per window no matter how many people apply.
+ */
+export async function queueApplicationDigest(data: NewApplicationDigestData, delayMs: number) {
+    await getNotificationQueue().add(
+        NotificationType.NEW_APPLICATION_DIGEST,
+        data,
+        {
+            jobId: `appdigest-${data.postId}`,
+            delay: Math.max(0, delayMs),
+        }
+    );
+    logger.info(`Application digest scheduled for post ${data.postId} in ${Math.round(delayMs / 1000)}s`);
 }
 
 /**

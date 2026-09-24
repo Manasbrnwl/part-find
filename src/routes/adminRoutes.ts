@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authenticate, authorize } from "../middleware/authMiddleware";
 import {
   getAllUsers,
+  getUserById,
   toggleUserStatus,
   adminUpdateUser,
   switchUserRole,
@@ -36,6 +37,7 @@ import {
   deleteTestimonial,
 } from "../controller/websiteController";
 import { adminListThreads, adminThreadMessages } from "../controller/chatController";
+import { getAnalytics } from "../controller/analyticsController";
 import {
   getReferrals,
   createReferral,
@@ -49,6 +51,7 @@ const router = Router();
 router.use(authenticate, authorize(["ADMIN"]));
 
 router.get("/users", getAllUsers);
+router.get("/users/:id", getUserById);
 router.patch("/users/:id/toggle", toggleUserStatus);
 router.patch("/users/:id/role", switchUserRole);
 router.patch("/users/:id", adminUpdateUser);
@@ -87,6 +90,9 @@ router.delete("/clients/:id", deleteClient);
 router.post("/testimonials", createTestimonial);
 router.patch("/testimonials/:id", updateTestimonial);
 router.delete("/testimonials/:id", deleteTestimonial);
+
+// Dashboard analytics
+router.get("/analytics", getAnalytics);
 
 // Chat moderation (read-only)
 router.get("/chats", adminListThreads);
