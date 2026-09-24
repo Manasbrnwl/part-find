@@ -4,6 +4,7 @@ import {
   updatePost,
   deletePost,
   getAllPosts,
+  getAllPostsV2,
   getPostById,
   getAppliedPosts,
   applyToPost,
@@ -42,6 +43,8 @@ router.put("/update-status/:id", authorize(["RECRUITER"]), updateUserStatus);
 router.get("/get-all-post", authorize(["RECRUITER"]), recruiterGetPost);
 router.get("/nearby", authorize(["USER"]), getNearbyPosts);
 router.get("/get-all", authorize(["USER"]), getAllPosts);
+// v2: same feed plus the event state and the recruiter's public profile
+router.get("/v2/get-all", authorize(["USER"]), getAllPostsV2);
 router.get("/:id", authorize(["USER"]), getPostById);
 router.post("/save/:postId", authorize(["USER"]), savePost);
 router.post("/unsave/:postId", authorize(["USER"]), unsavePost);

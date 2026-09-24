@@ -27,6 +27,16 @@ const { sendEmailNotification } = require("../../utils/notification/email.notifi
 const router = express.Router();
 
 /**
+ * Indian state the event runs in. Trimmed and length-capped; blank becomes
+ * null so "not set" has a single representation.
+ */
+function normalizeEventState(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed.slice(0, 100) : null;
+}
+
+/**
  * Email the Part Find team (official@part-find.org, override via ADMIN_NOTIFY_EMAIL)
  * when a recruiter creates a post that needs approval. Fire-and-forget.
  */
@@ -128,6 +138,10 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
     pay_period,
     latitude,
     longitude,
+    // The app sends the event's state as `event_state`; `state` is accepted
+    // too so other clients aren't forced into the app's naming.
+    event_state,
+    state,
   } = req.body;
   const userId = req.userId;
 
@@ -215,6 +229,7 @@ export const createPosts = asyncHandler(async (req: Request, res: Response) => {
       paymentDate: new Date(paymentDate),
       dressCode: dressCode || null,
       company_name,
+      state: normalizeEventState(event_state ?? state),
       category,
       type_id: typeId,
       pay_period: payPeriod as any,
@@ -286,6 +301,10 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
     pay_period,
     latitude,
     longitude,
+    // The app sends the event's state as `event_state`; `state` is accepted
+    // too so other clients aren't forced into the app's naming.
+    event_state,
+    state,
   } = req.body;
 
   if (!id) {
@@ -364,6 +383,10 @@ export const updatePost = asyncHandler(async (req: Request, res: Response) => {
       paymentBoys: paymentBoys !== undefined ? Number(paymentBoys) : post.paymentBoys,
       dressCode: dressCode !== undefined ? dressCode : post.dressCode,
       company_name,
+      // only touched when the caller actually sent it
+      ...(event_state !== undefined || state !== undefined
+        ? { state: normalizeEventState(event_state ?? state) }
+        : {}),
       category: category || post.category,
       ...(typeIdUpdate !== undefined && { type_id: typeIdUpdate }),
       ...(payPeriodUpdate !== undefined && { pay_period: payPeriodUpdate as any }),
@@ -599,6 +622,159 @@ export const markAttendance = asyncHandler(async (req: Request, res: Response) =
   });
 });
 
+/**
+ * GET /post/v2/get-all
+ *
+ * Version 2 of the candidate job feed. Same filters, paging and per-post
+ * fields as v1, plus:
+ *   - `state`, the event's state
+ *   - `recruiter`, the post owner's public profile (company, logo, type,
+ *     address) with their average rating from past events
+ *
+ * Contact details (email / phone) are deliberately not included: candidates
+ * reach a recruiter through chat once approved, so the feed can't be scraped
+ * for contacts. v1 is untouched for older app builds.
+ */
+export const getAllPostsV2 = asyncHandler(async (req: Request, res: Response) => {
+  const { limit = 10, page = 1 } = req.query;
+  const typeId = req.query.type_id ? parseInt(req.query.type_id as string, 10) : undefined;
+  const state = (req.query.state as string | undefined)?.trim();
+
+  const pageNumber = Math.max(parseInt(page as string, 10) || 1, 1);
+  const pageSize = Math.max(parseInt(limit as string, 10) || 10, 1);
+  const skip = (pageNumber - 1) * pageSize;
+  const take = pageSize;
+
+  const feedWhere = {
+    startDate: { gt: new Date() },
+    is_active: true,
+    is_recruiting: true,
+    approval_status: PostApprovalStatus.APPROVED,
+    ...(typeId && !Number.isNaN(typeId) ? { type_id: typeId } : {}),
+    ...(state ? { state } : {}),
+  };
+
+  const [posts, total] = await Promise.all([
+    prisma.post.findMany({
+      where: feedWhere,
+      select: {
+        id: true,
+        userId: true,
+        title: true,
+        role: true,
+        content: true,
+        requirement: true,
+        total: true,
+        location: true,
+        state: true,
+        payment: true,
+        paymentGirls: true,
+        paymentBoys: true,
+        paymentDate: true,
+        dressCode: true,
+        responsibility: true,
+        company_name: true,
+        girls: true,
+        boys: true,
+        lunch: true,
+        is_active: true,
+        is_recruiting: true,
+        is_urgent: true,
+        startDate: true,
+        endDate: true,
+        category: true,
+        type_id: true,
+        pay_period: true,
+        type: { select: { id: true, name: true } },
+        createdAt: true,
+        updatedAt: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            recruiter_company_name: true,
+            recruiter_company_logo: true,
+            recruiter_type: true,
+            recruiter_company_address: true,
+            createdAt: true,
+          },
+        },
+        _count: {
+          select: { comments: true },
+        },
+        comments: {
+          select: { id: true, status: true },
+          where: { userId: req.userId },
+        },
+        savePosts: {
+          select: { id: true },
+          where: { userId: req.userId },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+    }),
+    prisma.post.count({ where: feedWhere }),
+  ]);
+
+  // Average rating per recruiter on this page, in one query.
+  const recruiterIds = [...new Set(posts.map((p) => p.userId))];
+  const ratingRows = recruiterIds.length
+    ? await prisma.recruiterRating.groupBy({
+        by: ["recruiterId"],
+        where: { recruiterId: { in: recruiterIds } },
+        _avg: { rating: true },
+        _count: { _all: true },
+      })
+    : [];
+  const ratingByRecruiter = new Map(
+    ratingRows.map((r) => [
+      r.recruiterId,
+      {
+        average: r._avg.rating !== null ? Math.round(r._avg.rating * 10) / 10 : null,
+        count: r._count._all,
+      },
+    ])
+  );
+
+  const postsWithFlag = posts.map(({ comments, _count, savePosts, user, ...rest }) => {
+    const rating = ratingByRecruiter.get(rest.userId);
+    return {
+      ...rest,
+      appliedFlag: comments.length > 0 ? 1 : 0,
+      appliedStatus: comments?.[0]?.status || "Not Applied",
+      appliedApplicants: _count.comments,
+      savedFlag: savePosts.length > 0 ? 1 : 0,
+      recruiter: user
+        ? {
+            id: user.id,
+            name: user.name,
+            companyName: user.recruiter_company_name,
+            companyLogo: user.recruiter_company_logo,
+            companyType: user.recruiter_type,
+            companyAddress: user.recruiter_company_address,
+            memberSince: user.createdAt,
+            // what a candidate is really asking: is this recruiter any good?
+            averageRating: rating?.average ?? null,
+            ratingCount: rating?.count ?? 0,
+          }
+        : null,
+    };
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Posts retrieved successfully",
+    data: {
+      posts: postsWithFlag,
+      totalPages: Math.ceil(total / pageSize),
+      currentPage: pageNumber,
+      totalPosts: total,
+    },
+  });
+});
+
 export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
   const location = req.query.location as string;
   const { limit = 10, page = 1 } = req.query;
@@ -629,6 +805,7 @@ export const getAllPosts = asyncHandler(async (req: Request, res: Response) => {
         requirement: true,
         total: true,
         location: true,
+        state: true,
         payment: true,
         paymentGirls: true,
         paymentBoys: true,
