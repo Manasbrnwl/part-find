@@ -87,25 +87,53 @@ export const REFRESH_ROTATION_GRACE_MS =
     Math.max(0, parseInt(process.env.REFRESH_ROTATION_GRACE_SECONDS || "60", 10)) * 1000;
 
 /**
- * Rotate a refresh token: issue a replacement and mark the old one revoked,
- * remembering what replaced it and when.
+ * Rotate a refresh token: claim it atomically, then issue the replacement and
+ * link the two.
+ *
+ * Returns null when another request already claimed this token — the caller
+ * then waits for that winner's replacement rather than minting a second one,
+ * so a burst of parallel refreshes yields exactly one new token.
  */
 export const rotateRefreshToken = async (
     oldToken: string,
     userId: string,
     deviceInfo?: string
-): Promise<string> => {
+): Promise<string | null> => {
+    const claim = await prisma.refreshToken.updateMany({
+        where: { token: oldToken, isRevoked: false },
+        data: { isRevoked: true, revokedAt: new Date() },
+    });
+    if (claim.count === 0) return null; // lost the race
+
     const newToken = generateRefreshToken();
-    await prisma.$transaction([
-        prisma.refreshToken.create({
-            data: { userId, token: newToken, deviceInfo, expiresAt: getRefreshTokenExpiry() },
-        }),
-        prisma.refreshToken.update({
-            where: { token: oldToken },
-            data: { isRevoked: true, revokedAt: new Date(), replacedBy: newToken },
-        }),
-    ]);
+    await prisma.refreshToken.create({
+        data: { userId, token: newToken, deviceInfo, expiresAt: getRefreshTokenExpiry() },
+    });
+    await prisma.refreshToken.update({
+        where: { token: oldToken },
+        data: { replacedBy: newToken },
+    });
     return newToken;
+};
+
+/**
+ * The replacement issued for a token that was just rotated, if it is still
+ * inside the grace window. Retries briefly: the winner sets replacedBy a
+ * moment after claiming the old token.
+ */
+export const awaitRotationReplacement = async (oldToken: string): Promise<string | null> => {
+    for (let attempt = 0; attempt < 6; attempt++) {
+        const row = await prisma.refreshToken.findUnique({
+            where: { token: oldToken },
+            select: { replacedBy: true, revokedAt: true },
+        });
+        if (!row?.revokedAt || Date.now() - row.revokedAt.getTime() > REFRESH_ROTATION_GRACE_MS) {
+            return null;
+        }
+        if (row.replacedBy) return row.replacedBy;
+        await new Promise((r) => setTimeout(r, 100));
+    }
+    return null;
 };
 
 /**
