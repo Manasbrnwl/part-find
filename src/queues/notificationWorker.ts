@@ -136,8 +136,12 @@ async function lastApplicantNotificationAt(postId: string, recruiterId: string):
  * because the fixed jobId makes repeat scheduling a no-op.
  */
 async function processNewApplication(data: NewApplicationData) {
+    // Open the window a hair before this application so that the applicant who
+    // opened it is counted (the digest filters on createdAt > since).
+    const appliedAt = data.appliedAt ? new Date(data.appliedAt) : new Date();
+    const windowStart = new Date(appliedAt.getTime() - 1000);
     await queueApplicationDigest(
-        { postId: data.postId, recruiterId: data.recruiterId, since: new Date().toISOString() },
+        { postId: data.postId, recruiterId: data.recruiterId, since: windowStart.toISOString() },
         APPLICATION_DIGEST_WINDOW_MS
     );
     logger.info(`Application for post ${data.postId} added to the current digest window`);

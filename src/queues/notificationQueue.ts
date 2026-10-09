@@ -79,6 +79,12 @@ export interface NewApplicationData {
     applicantName: string;
     recruiterId: string;
     recruiterFcmToken?: string | null;
+    /**
+     * When the application row was written (ISO). The digest window opens at
+     * this instant rather than whenever the worker gets round to the job,
+     * otherwise the applicant who opened the window falls outside it.
+     */
+    appliedAt?: string;
 }
 
 export interface NewApplicationDigestData {

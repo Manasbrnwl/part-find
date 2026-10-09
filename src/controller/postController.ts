@@ -866,6 +866,7 @@ export const applyToPost = asyncHandler(async (req: Request, res: Response) => {
     applicantName: applicant?.name || "A user",
     recruiterId: post.userId,
     recruiterFcmToken: recruiter?.fcm_token,
+    appliedAt: application.createdAt.toISOString(),
   }).catch((err) => logger.error("Failed to queue application notification", { error: err }));
 
   res.status(201).json({
