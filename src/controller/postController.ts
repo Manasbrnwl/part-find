@@ -1251,6 +1251,7 @@ export const updateUserStatus = asyncHandler(
           userName: updatedApplication.user.name || "User",
           userEmail: updatedApplication.user.email,
           postTitle: updatedApplication.post.title,
+          postId: updatedApplication.postId,
           fcmToken: updatedApplication.user.fcm_token || undefined,
         });
       }

@@ -396,7 +396,12 @@ components:
         data:
           type: object
           nullable: true
-          description: Extra payload (e.g. applicationId, status, rejectReason, rating)
+          description: >-
+            Extra payload (e.g. applicationId, status, rejectReason, rating).
+            Always carries "route" - the in-app destination to open when the
+            notification is tapped, with any path parameter already substituted
+            (e.g. "/user/event-detail/abc123"). The same route is sent in the
+            FCM data payload of the matching push. Admin messages carry no route.
         is_read:
           type: boolean
         read_at:

@@ -6,6 +6,7 @@ import { lowRatingWarningTemplate, absentWarningTemplate, completionCertificateT
 import { logoAttachment } from "../../utils/notification/logoAsset";
 import { sendFCMToMultipleTokens } from "../../utils/firebase";
 import { notifyUser, storeNotifications, purgeExpiredNotifications, retentionCutoff } from "../utils/notificationStore";
+import { resolveNotificationRoute } from "../utils/notificationRoutes";
 import {
     NotificationType,
     JobReminderData,
@@ -103,6 +104,7 @@ async function processNewJobPosted(data: NewJobPostedData) {
         reminderId: data.postId,
         type: NotificationType.NEW_JOB_POSTED,
         postId: data.postId,
+        route: resolveNotificationRoute(NotificationType.NEW_JOB_POSTED, { postId: data.postId })!,
     });
 
     logger.info(`New job notification broadcast to ${data.fcmTokens.length} devices`);
@@ -346,6 +348,7 @@ async function processAbsentWarning(data: AbsentWarningData) {
         type: NotificationType.ABSENT_WARNING,
         title: "⚠️ Attendance Warning",
         body: `You were marked as absent for "${data.postTitle}". This can affect your profile standing.`,
+        postId: data.postId,
     });
     logger.info(`Absent warning stored for user ${data.userId} (pushed=${pushed})`);
 
@@ -503,6 +506,7 @@ async function processInactiveReminder(data: InactiveReminderData) {
             body: isRecruiter
                 ? "Post a gig and start receiving applications today."
                 : "Fresh opportunities are live — come find your next gig.",
+            data: { role: data.role },
         });
         delivered = pushed;
     } else {

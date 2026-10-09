@@ -125,6 +125,8 @@ export interface AbsentWarningData {
     userName: string;
     userEmail: string;
     postTitle: string;
+    // Lets the notification deep-link to the event the no-show was for
+    postId?: string;
     fcmToken?: string;
 }
 
