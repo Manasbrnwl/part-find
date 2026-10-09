@@ -127,44 +127,28 @@ async function lastApplicantNotificationAt(postId: string, recruiterId: string):
 }
 
 /**
- * Process new application notification — sent to the recruiter.
+ * A new application arrived.
  *
- * The first applicant after a quiet period notifies immediately; everyone who
- * applies inside the window that follows is rolled up into a single digest
- * (see processNewApplicationDigest), so a post with 200 applicants produces a
- * handful of notifications instead of 200.
+ * Nothing is sent now: the recruiter is told once per batching window, so a
+ * post that collects twenty applicants produces one notification rather than
+ * twenty. The first applicant opens the window (carrying its start time so
+ * the digest knows exactly who to count); everyone after that joins it,
+ * because the fixed jobId makes repeat scheduling a no-op.
  */
 async function processNewApplication(data: NewApplicationData) {
-    const lastAt = await lastApplicantNotificationAt(data.postId, data.recruiterId);
-    const windowEndsAt = lastAt ? lastAt.getTime() + APPLICATION_DIGEST_WINDOW_MS : 0;
-
-    if (windowEndsAt > Date.now()) {
-        // Still inside the quiet window — fold this applicant into the digest.
-        await queueApplicationDigest(
-            { postId: data.postId, recruiterId: data.recruiterId },
-            windowEndsAt - Date.now()
-        );
-        logger.info(`Application for post ${data.postId} folded into digest (window open)`);
-        return;
-    }
-
-    const { pushed } = await notifyUser({
-        userId: data.recruiterId,
-        fcmToken: data.recruiterFcmToken,
-        type: NotificationType.NEW_APPLICATION,
-        title: "📋 New Application!",
-        body: `${data.applicantName} applied for "${data.postTitle}"`,
-        postId: data.postId,
-        data: { applicantName: data.applicantName },
-    });
-
-    logger.info(`Application notification stored for recruiter ${data.recruiterId} (pushed=${pushed})`);
+    await queueApplicationDigest(
+        { postId: data.postId, recruiterId: data.recruiterId, since: new Date().toISOString() },
+        APPLICATION_DIGEST_WINDOW_MS
+    );
+    logger.info(`Application for post ${data.postId} added to the current digest window`);
 }
 
 /**
- * Process the rolled-up "N more people applied" summary for one post. Counts
- * the applications received since the recruiter was last notified, so nothing
- * is double-counted and nothing is missed.
+ * Send the batched "N people applied" summary for one post.
+ *
+ * Counts everyone who applied since the window opened, or since the recruiter
+ * was last told about this post if that is later — so nothing is counted
+ * twice and nothing is missed when the worker runs behind.
  */
 async function processNewApplicationDigest(data: NewApplicationDigestData) {
     const [post, recruiter, lastAt] = await Promise.all([
@@ -186,7 +170,11 @@ async function processNewApplicationDigest(data: NewApplicationDigestData) {
         return;
     }
 
-    const since = lastAt ?? new Date(Date.now() - APPLICATION_DIGEST_WINDOW_MS);
+    const windowStart = data.since ? new Date(data.since) : null;
+    const since =
+        lastAt && windowStart
+            ? new Date(Math.max(lastAt.getTime(), windowStart.getTime()))
+            : lastAt ?? windowStart ?? new Date(Date.now() - APPLICATION_DIGEST_WINDOW_MS);
     const [count, latest] = await Promise.all([
         prisma.postApplied.count({ where: { postId: post.id, createdAt: { gt: since } } }),
         prisma.postApplied.findFirst({
@@ -205,7 +193,7 @@ async function processNewApplicationDigest(data: NewApplicationDigestData) {
     const body =
         count === 1
             ? `${applicantName} applied for "${post.title}"`
-            : `${count} more people applied for "${post.title}"`;
+            : `${applicantName} and ${count - 1} ${count === 2 ? "other" : "others"} applied for "${post.title}"`;
 
     const { pushed } = await notifyUser({
         userId: data.recruiterId,

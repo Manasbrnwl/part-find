@@ -84,12 +84,19 @@ export interface NewApplicationData {
 export interface NewApplicationDigestData {
     postId: string;
     recruiterId: string;
+    /**
+     * When this batching window opened (ISO). The fixed jobId means only the
+     * first applicant's value is kept, so this is the true window start even
+     * if the worker runs late — the digest counts everyone since then.
+     */
+    since: string;
 }
 
 /**
- * How long a recruiter is left alone after an applicant notification. The next
- * applicants inside this window are rolled up into a single digest that fires
- * when the window closes. Override with APPLICATION_DIGEST_WINDOW_MINUTES.
+ * How long applicants are collected before the recruiter is told. The first
+ * applicant opens the window; everyone who applies inside it is rolled into
+ * one notification that fires when it closes. Shorten it for a timelier (but
+ * chattier) feed with APPLICATION_DIGEST_WINDOW_MINUTES.
  */
 export const APPLICATION_DIGEST_WINDOW_MS =
     Math.max(1, parseInt(process.env.APPLICATION_DIGEST_WINDOW_MINUTES || "30", 10)) * 60 * 1000;
