@@ -331,6 +331,11 @@ model RefreshToken {
   deviceInfo String?
   expiresAt  DateTime
   isRevoked  Boolean  @default(false)
+  // Set when this token was rotated out by a refresh (NOT by logout), together
+  // with the token that replaced it. Lets a request that raced the rotation be
+  // handed the replacement instead of being signed out.
+  revokedAt  DateTime?
+  replacedBy String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
