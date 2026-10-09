@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { logger } from "../../utils/logger";
 import { sendFCMNotification } from "../../utils/firebase";
+import { resolveNotificationRoute } from "./notificationRoutes";
 
 
 /** How long a notification stays in the feed before the daily purge removes it. */
@@ -21,6 +22,35 @@ export interface StoredNotificationInput {
 }
 
 /**
+ * The notification's data payload with the deep-link `route` filled in.
+ *
+ * The route is derived from the type plus whatever ids the caller passed, so
+ * callers never spell it out. A caller that already set `route` keeps it, which
+ * is the escape hatch for one-off destinations. `role` only steers the route
+ * (the inactivity nudge differs per role) and is dropped afterwards.
+ */
+export function dataWithRoute(input: StoredNotificationInput): Record<string, unknown> | undefined {
+    const { role, ...rest } = (input.data ?? {}) as Record<string, unknown>;
+
+    const route =
+        typeof rest.route === "string" && rest.route
+            ? rest.route
+            : resolveNotificationRoute(input.type, {
+                  postId: input.postId,
+                  threadId: typeof rest.threadId === "string" ? rest.threadId : null,
+                  role: typeof role === "string" ? role : null,
+              });
+
+    const out: Record<string, unknown> = { ...rest };
+    if (route) out.route = route;
+    // Routes with a path parameter also ship the raw id, so the app can build
+    // its own destination if it ever wants to.
+    if (input.postId && out.postId === undefined) out.postId = input.postId;
+
+    return Object.keys(out).length ? out : undefined;
+}
+
+/**
  * Persist a single in-app notification for a user.
  */
 export async function storeNotification(input: StoredNotificationInput) {
@@ -31,7 +61,7 @@ export async function storeNotification(input: StoredNotificationInput) {
             title: input.title,
             body: input.body,
             postId: input.postId ?? null,
-            data: (input.data ?? undefined) as Prisma.InputJsonValue | undefined,
+            data: dataWithRoute(input) as Prisma.InputJsonValue | undefined,
         },
     });
 }
@@ -48,7 +78,7 @@ export async function storeNotifications(inputs: StoredNotificationInput[]) {
             title: i.title,
             body: i.body,
             postId: i.postId ?? null,
-            data: (i.data ?? undefined) as Prisma.InputJsonValue | undefined,
+            data: dataWithRoute(i) as Prisma.InputJsonValue | undefined,
         })),
     });
     return result.count;
@@ -69,13 +99,22 @@ export async function notifyUser(
 
     let pushed = false;
     if (input.fcmToken) {
+        // The row's stored payload is what goes out, so the push and the feed
+        // entry always deep-link to the same place. FCM data values are strings,
+        // so only scalars travel — a nested object would arrive as "[object
+        // Object]" and is better left to the feed row.
+        const payload = Object.fromEntries(
+            Object.entries((row.data ?? {}) as Record<string, unknown>)
+                .filter(([, v]) => ["string", "number", "boolean"].includes(typeof v))
+                .map(([k, v]) => [k, String(v)])
+        );
         const result = await sendFCMNotification(input.fcmToken, {
+            ...payload,
             title: input.title,
             body: input.body,
             reminderId: input.postId || input.userId,
             type: input.type,
             notificationId: row.id,
-            ...(input.postId ? { postId: input.postId } : {}),
         }).catch((err) => {
             logger.warn(`Push failed for user ${input.userId} (${input.type}): ${err?.message}`);
             return { success: false };
