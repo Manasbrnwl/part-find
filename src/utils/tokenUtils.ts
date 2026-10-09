@@ -13,7 +13,10 @@ if (!JWT_SECRET) {
 // Token expiry configurations.
 // The app refreshes transparently on any 401, so a short access token costs
 // users nothing; the long refresh window is what keeps them signed in.
-const ACCESS_TOKEN_EXPIRY = "5m"; // 5 minutes
+// 5 minutes meant the app refreshed ~12x an hour, and every refresh is a
+// chance for the rotation race that logs people out (see refreshTokens).
+const ACCESS_TOKEN_EXPIRY = (process.env.ACCESS_TOKEN_EXPIRY ||
+    "60m") as jwt.SignOptions["expiresIn"];
 const REFRESH_TOKEN_EXPIRY_DAYS = 90; // ~3 months
 
 /**
@@ -72,6 +75,40 @@ export const createAndSaveRefreshToken = async (
 };
 
 /**
+ * How long a just-rotated refresh token keeps working.
+ *
+ * The app fires several requests at once; when the access token expires they
+ * all 401 and each one refreshes independently. The first rotates the token,
+ * the rest arrive holding the token that was just revoked. Without this window
+ * they get a 401 and the app signs the user out. Inside the window they are
+ * handed the replacement instead, so a refresh stampede is harmless.
+ */
+export const REFRESH_ROTATION_GRACE_MS =
+    Math.max(0, parseInt(process.env.REFRESH_ROTATION_GRACE_SECONDS || "60", 10)) * 1000;
+
+/**
+ * Rotate a refresh token: issue a replacement and mark the old one revoked,
+ * remembering what replaced it and when.
+ */
+export const rotateRefreshToken = async (
+    oldToken: string,
+    userId: string,
+    deviceInfo?: string
+): Promise<string> => {
+    const newToken = generateRefreshToken();
+    await prisma.$transaction([
+        prisma.refreshToken.create({
+            data: { userId, token: newToken, deviceInfo, expiresAt: getRefreshTokenExpiry() },
+        }),
+        prisma.refreshToken.update({
+            where: { token: oldToken },
+            data: { isRevoked: true, revokedAt: new Date(), replacedBy: newToken },
+        }),
+    ]);
+    return newToken;
+};
+
+/**
  * Validate a refresh token and return the associated user
  */
 export const validateRefreshToken = async (token: string) => {
@@ -114,7 +151,9 @@ export const revokeRefreshToken = async (token: string): Promise<boolean> => {
     try {
         await prisma.refreshToken.update({
             where: { token },
-            data: { isRevoked: true },
+            // no replacedBy: an explicit logout must not be revivable by the
+            // rotation grace window
+            data: { isRevoked: true, revokedAt: new Date() },
         });
         return true;
     } catch {
@@ -131,7 +170,7 @@ export const revokeAllUserTokens = async (userId: string): Promise<number> => {
             userId,
             isRevoked: false,
         },
-        data: { isRevoked: true },
+        data: { isRevoked: true, revokedAt: new Date() },
     });
     return result.count;
 };
