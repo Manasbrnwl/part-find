@@ -7,7 +7,7 @@ import {
   generateAccessToken,
   createAndSaveRefreshToken,
   rotateRefreshToken,
-  REFRESH_ROTATION_GRACE_MS,
+  awaitRotationReplacement,
   validateRefreshToken,
   revokeRefreshToken,
   revokeAllUserTokens,
@@ -501,63 +501,53 @@ export const refreshTokens = asyncHandler(async (req: Request, res: Response) =>
     throw handleValidationError("Refresh token is required");
   }
 
-  // A token that was rotated moments ago is still honoured: the app fires
-  // parallel requests, they all 401 together and each one refreshes, so the
-  // losers of that race would otherwise be signed out. They get handed the
-  // replacement instead. Explicit logouts set no replacedBy and are never
-  // revivable here.
-  const existing = await prisma.refreshToken.findUnique({
+  // The app fires parallel requests; when the access token expires they all
+  // 401 together and each one refreshes. Exactly one of them rotates the
+  // token — the rest are handed that same replacement instead of a 401 that
+  // would sign the user out.
+  const record = await prisma.refreshToken.findUnique({
     where: { token: refreshToken },
     select: {
       isRevoked: true,
-      revokedAt: true,
-      replacedBy: true,
       expiresAt: true,
       user: { select: { id: true, email: true, is_active: true } },
     },
   });
 
-  if (
-    existing?.isRevoked &&
-    existing.replacedBy &&
-    existing.revokedAt &&
-    Date.now() - existing.revokedAt.getTime() <= REFRESH_ROTATION_GRACE_MS &&
-    existing.user.is_active &&
-    existing.expiresAt > new Date()
-  ) {
-    logger.info("Refresh raced a rotation; returning the replacement token", {
-      userId: existing.user.id,
-    });
-    return res.status(200).json({
-      success: true,
-      message: "Tokens refreshed successfully",
-      data: {
-        accessToken: generateAccessToken(existing.user.id, existing.user.email),
-        refreshToken: existing.replacedBy,
-      },
-    });
+  if (!record) {
+    return res.status(401).json({ success: false, message: "Invalid refresh token" });
+  }
+  if (record.expiresAt < new Date()) {
+    return res.status(401).json({ success: false, message: "Refresh token has expired" });
+  }
+  if (!record.user.is_active) {
+    return res.status(401).json({ success: false, message: "User account is inactive" });
   }
 
-  // Validate the refresh token
-  const result = await validateRefreshToken(refreshToken);
-
-  if (!result.valid || !result.user) {
-    return res.status(401).json({
-      success: false,
-      message: result.error || "Invalid refresh token",
-    });
+  let newRefreshToken: string | null = null;
+  if (!record.isRevoked) {
+    newRefreshToken = await rotateRefreshToken(refreshToken, record.user.id);
+  }
+  if (!newRefreshToken) {
+    // Already rotated — by a request that beat us, or moments ago. An explicit
+    // logout records no replacement, so it stays dead.
+    newRefreshToken = await awaitRotationReplacement(refreshToken);
+    if (newRefreshToken) {
+      logger.info("Refresh raced a rotation; returning the replacement token", {
+        userId: record.user.id,
+      });
+    }
   }
 
-  // Rotate: issue the replacement and revoke this one, recording the link so a
-  // racing request can still be served (above).
-  const newRefreshToken = await rotateRefreshToken(refreshToken, result.user.id);
-  const newAccessToken = generateAccessToken(result.user.id, result.user.email);
+  if (!newRefreshToken) {
+    return res.status(401).json({ success: false, message: "Refresh token has been revoked" });
+  }
 
   res.status(200).json({
     success: true,
     message: "Tokens refreshed successfully",
     data: {
-      accessToken: newAccessToken,
+      accessToken: generateAccessToken(record.user.id, record.user.email),
       refreshToken: newRefreshToken,
     },
   });
